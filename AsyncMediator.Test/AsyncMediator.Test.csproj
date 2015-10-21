@@ -88,12 +88,11 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Mediator\AsyncMediator.csproj">
+    <ProjectReference Include="..\AsyncMediator\AsyncMediator.csproj">
       <Project>{678bc65b-8cfb-4f84-bfb3-1949c18f011b}</Project>
       <Name>AsyncMediator</Name>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
