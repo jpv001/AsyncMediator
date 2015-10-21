@@ -47,15 +47,14 @@
   <ItemGroup>
     <Compile Include="BaseClasses\CommandHandler.cs" />
     <Compile Include="BaseClasses\CommandWorkflowResult.cs" />
+    <Compile Include="BaseClasses\CommandWorkflowResult`T.cs" />
     <Compile Include="BaseClasses\ValidationContext.cs" />
-    <Compile Include="Infrastructure\SearchExtensions.cs" />
     <Compile Include="Interfaces\IDomainEvent.cs" />
     <Compile Include="Infrastructure\EventHandlerEnumerableExtensions.cs" />
     <Compile Include="BaseClasses\HandlerOrderAttribute.cs" />
     <Compile Include="Interfaces\ICommand.cs" />
     <Compile Include="Interfaces\ICommandHandler.cs" />
     <Compile Include="Interfaces\IEventHandler.cs" />
-    <Compile Include="Interfaces\IHaveViewModel.cs" />
     <Compile Include="Interfaces\ILookupQuery.cs" />
     <Compile Include="Interfaces\IMediator.cs" />
     <Compile Include="Interfaces\IQuery.cs" />

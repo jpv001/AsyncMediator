@@ -23,7 +23,9 @@ namespace AsyncMediator
         public async Task Publish<TEvent>(TEvent @event) where TEvent : IDomainEvent
         {
             foreach (var h in GetEventHandlers(@event))
+            {
                 await h.Handle(@event).ConfigureAwait(false);
+            }
         }
 
         public async Task<CommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand
@@ -41,10 +43,13 @@ namespace AsyncMediator
             while (_deferredEvents.Any())
             {
                 _queuedEvents.AddRange(_deferredEvents);
+
                 _deferredEvents.Clear();
 
                 foreach (var @event in _queuedEvents)
+                {
                     await @event.Invoke().ConfigureAwait(false);
+                }
 
                 _queuedEvents.Clear();
             }
