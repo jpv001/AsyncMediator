@@ -57,16 +57,38 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Fakes\ChainedEventHandler.cs" />
+    <Compile Include="Fakes\DependentEventHandler.cs" />
+    <Compile Include="Fakes\FakeDataStore.cs" />
+    <Compile Include="Fakes\FakeEvent.cs" />
+    <Compile Include="Fakes\FakeEventFromHandler.cs" />
+    <Compile Include="Fakes\FakeEventTwoFromHandler.cs" />
+    <Compile Include="Fakes\FakeRangeCriteria.cs" />
+    <Compile Include="Fakes\FakeResult.cs" />
+    <Compile Include="Fakes\FindFakeResultByPrimitiveType.cs" />
+    <Compile Include="Fakes\FindFakeResultByRangeCriteria.cs" />
+    <Compile Include="Fakes\FindPrimitiveTypeByCriteria.cs" />
+    <Compile Include="Fakes\FindResultForLookup.cs" />
+    <Compile Include="Fakes\HandlerDeferringMultipleEvents.cs" />
+    <Compile Include="Fakes\HandlerDeferringSingleEvent.cs" />
+    <Compile Include="Fakes\HandlerWithoutAdditionalEvents.cs" />
+    <Compile Include="Fakes\HandlerWithoutEventsWithOrdering.cs" />
+    <Compile Include="Fakes\HandlerWithoutEventsWithoutOrdering.cs" />
     <Compile Include="MediatorTests.cs" />
     <Compile Include="Infrastructure\FireAndForget.cs" />
     <Compile Include="Infrastructure\MessageHandlerRegistry.cs" />
+    <Compile Include="Fakes\MultipleQueryTypesInOneObject.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Fakes\SingleIdCriteria.cs" />
+    <Compile Include="Fakes\SingleNameCriteria.cs" />
+    <Compile Include="Fakes\TestCommand.cs" />
+    <Compile Include="Fakes\TestCommandHandler.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Mediator\AsyncMediator.csproj">
+    <ProjectReference Include="..\AsyncMediator\AsyncMediator.csproj">
       <Project>{678bc65b-8cfb-4f84-bfb3-1949c18f011b}</Project>
       <Name>AsyncMediator</Name>
     </ProjectReference>
