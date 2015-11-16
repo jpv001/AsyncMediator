@@ -19,11 +19,11 @@ namespace AsyncMediator.Test
             return Task.FromResult(0);
         }
 
-        protected override Task DoHandle(ValidationContext validationContext)
+        protected override Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext)
         {
             _mediator.DeferEvent(new FakeEvent());
             _mediator.DeferEvent(new FakeEventFromHandler());
-            return Task.FromResult(0);
+            return Task.FromResult(new CommandWorkflowResult() as ICommandWorkflowResult);
         }
     }
 }

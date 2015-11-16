@@ -1,16 +1,15 @@
-﻿namespace AsyncMediator
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+
+namespace AsyncMediator
 {
     /// <summary>
     /// A generic version of the <see cref="CommandWorkflowResult"/> class, including a workflow result object.
     /// </summary>
-    /// <typeparam name="T">The type of workflow result</typeparam>
-    public class CommandWorkflowResult<T> : CommandWorkflowResult
+    /// <typeparam name="TResult">The type of workflow result</typeparam>
+    public class CommandWorkflowResult<TResult> : CommandWorkflowResult
+        where TResult : class, new()
     {
-        /// <summary>
-        /// The workflow result.
-        /// </summary>
-        public T Result { get; set; }
-
         /// <summary>
         /// Default constructor.
         /// Creates a new <see cref="CommandWorkflowResult{T}"/>.
@@ -24,10 +23,31 @@
         /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
         /// </summary>
         /// <param name="result">The result instance.</param>
-        public CommandWorkflowResult(T result)
+        public CommandWorkflowResult(TResult result)
         {
-            Result = result;
+            SetResult(result);
         }
+
+        /// <summary>
+        /// Public constructor.
+        /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
+        /// </summary>
+        /// <param name="result">The result instance.</param>
+        /// <param name="validationResults">Existing validation results that you want to create the <see cref="CommandWorkflowResult{T}"/> with.</param>
+        public CommandWorkflowResult(TResult result, IList<ValidationResult> validationResults)
+        {
+            SetResult(result);
+            ValidationResults = validationResults;
+        }
+
+        /// <summary>
+        /// Public constructor.
+        /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
+        /// </summary>
+        /// <param name="validationResults">Existing validation results that you want to create the <see cref="CommandWorkflowResult{T}"/> with.</param>
+        public CommandWorkflowResult(IEnumerable<ValidationResult> validationResults)
+            : base(validationResults)
+        { }
 
         /// <summary>
         /// Determines whether the specified object is equal to this object.
@@ -36,8 +56,8 @@
         /// <returns>True if they are equal; false if not.</returns>
         public override bool Equals(object obj)
         {
-            var other = obj as CommandWorkflowResult<T>;
-            return other != null && ResultEquals(other.Result) && base.Equals(other);
+            var other = obj as CommandWorkflowResult<TResult>;
+            return other != null && ResultEquals(other.ObjectResult as TResult) && base.Equals(other);
         }
 
         /// <summary>
@@ -45,9 +65,9 @@
         /// </summary>
         /// <param name="otherResult">The other result.</param>
         /// <returns>True if they are equal; false if not.</returns>
-        protected bool ResultEquals(T otherResult)
+        protected bool ResultEquals(TResult otherResult)
         {
-            return (Result == null) ? (otherResult == null) : Result.Equals(otherResult);
+            return (ObjectResult == null) ? (otherResult == null) : ObjectResult.Equals(otherResult);
         }
     }
 }

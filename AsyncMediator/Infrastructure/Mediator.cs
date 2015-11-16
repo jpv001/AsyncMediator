@@ -20,7 +20,7 @@ namespace AsyncMediator
             _singleInstanceFactory = singleInstanceFactory;
         }
 
-        public async Task Publish<TEvent>(TEvent @event) where TEvent : IDomainEvent
+        private async Task Publish<TEvent>(TEvent @event) where TEvent : IDomainEvent
         {
             foreach (var h in GetEventHandlers(@event))
             {
@@ -28,7 +28,7 @@ namespace AsyncMediator
             }
         }
 
-        public async Task<CommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand
+        public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand
         {
             return await GetCommandHandler(command).Handle(command).ConfigureAwait(false);
         }

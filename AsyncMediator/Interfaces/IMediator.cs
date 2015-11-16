@@ -11,12 +11,12 @@ namespace AsyncMediator
     {
         /// <summary>
         /// The Send Command function is used to send an <see cref="ICommand"/> to a registered 
-        /// <see cref="ICommandHandler{TCommand}"/> that is retrieved from the <see cref="SingleInstanceFactory"/>.
+        /// <see cref="ICommandHandler{TCommand}"/> that is retrieved from the <see cref="SingleInstanceFactory"/> without a result type.
         /// </summary>
-        /// <typeparam name="TCommand">A <see cref="ICommand"/> that is handled by a <see cref="ICommandHandler{TCommand}"/>.</typeparam>
+        // <typeparam name="TCommand">A <see cref="ICommand"/> that is handled by a <see cref="ICommandHandler{TCommand}"/>.</typeparam>
         /// <param name="command">The <see cref="ICommand"/> that needs to be handled.</param>
-        /// <returns>A <see cref="CommandWorkflowResult"/> the contains any relevant <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/> and a Success flag.</returns>
-        Task<CommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand;
+        /// <returns>A class that implements <see cref="ICommandWorkflowResult"/> that contains any relevant <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/> and a Success flag.</returns>
+        Task<ICommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand;
 
         /// <summary>
         /// The Defer Event function is used to queue <see cref="IDomainEvent"/> to be processed when <see cref="ExecuteDeferredEvents"/> is called.

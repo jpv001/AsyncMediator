@@ -74,6 +74,9 @@
     <Compile Include="Fakes\HandlerWithoutAdditionalEvents.cs" />
     <Compile Include="Fakes\HandlerWithoutEventsWithOrdering.cs" />
     <Compile Include="Fakes\HandlerWithoutEventsWithoutOrdering.cs" />
+    <Compile Include="Fakes\TestCommandResult.cs" />
+    <Compile Include="Fakes\TestCommandWithResult.cs" />
+    <Compile Include="Fakes\TestCommandWithResultHandler.cs" />
     <Compile Include="MediatorTests.cs" />
     <Compile Include="Infrastructure\FireAndForget.cs" />
     <Compile Include="Infrastructure\MessageHandlerRegistry.cs" />

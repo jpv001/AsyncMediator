@@ -165,6 +165,38 @@ namespace AsyncMediator.Test
         }
 
         [TestMethod]
+        public async Task Commands_CanHandleCommandWithAReturnValue()
+        {
+            // Arrange
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestCommandWithResult>>(new TestCommandWithResultHandler(mediator));
+
+            // Act
+            var result = await mediator.Send(new TestCommandWithResult { Id = 1 });
+
+            // Assert
+            Assert.IsTrue(result.Result<TestCommandResult>().ResultingValue == 5);
+        }
+
+
+        [TestMethod]
+        public async Task Commands_CanHandleCommandWithAReturnValueWithValidationFailures()
+        {
+            // Arrange
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestCommandWithResult>>(new TestCommandWithResultHandler(mediator));
+
+            // Act
+            var result = await mediator.Send(new TestCommandWithResult { Id = 999 });
+            var returnedValue = result.Result<TestCommandResult>();
+
+            // Assert
+            Assert.IsTrue(returnedValue == null && result.ValidationResults.Any());
+        }
+
+        [TestMethod]
         public async Task Commands_WhenExecuting_CanHandleValidationErrors()
         {
             // Arrange

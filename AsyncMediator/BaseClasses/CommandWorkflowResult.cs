@@ -7,9 +7,9 @@ namespace AsyncMediator
 {
     /// <summary>
     /// The result of a <see cref="ICommand"/> being handled by the <see cref="IMediator"/> will result in a <see cref="CommandWorkflowResult"/>
-    /// containing the a list of <see cref="ValidationResult"/>'s and a Success flag.
+    /// containing the a list of <see cref="ValidationResult"/>'s, a Success flag and an optional return object.
     /// </summary>
-    public class CommandWorkflowResult
+    public class CommandWorkflowResult : ICommandWorkflowResult
     {
         /// <summary>
         /// This returns a <see cref="CommandWorkflowResult"/> that contains the result of executing a validation action passed into it.
@@ -91,6 +91,31 @@ namespace AsyncMediator
         public bool Success
         {
             get { return ValidationResults == null || !ValidationResults.Any(); }
+        }
+
+        /// <summary>
+        /// This stores the resulting value as an object that will be cast before using it via the SetResult and Result methods.
+        /// </summary>
+        protected object ObjectResult { get; private set; }
+
+        /// <summary>
+        /// This method will return the result of the command, cast to the type specified, this will return null in the event of validation failures.
+        /// </summary>
+        /// <typeparam name="TResult">This is the type of result you expect to be returned from the <see cref="ICommandHandler{TCommand}"/>.</typeparam>
+        /// <returns>The result of the <see cref="ICommandHandler{TCommand}"/>.</returns>
+        public TResult Result<TResult>() where TResult : class, new()
+        {
+            return ObjectResult as TResult;
+        }
+
+        /// <summary>
+        /// The result of the <see cref="ICommand"/> that has been handled by the <see cref="ICommandHandler{TCommand}"/> should be put into this method for later use.
+        /// </summary>
+        /// <typeparam name="TResult">This is the result of the <see cref="ICommandHandler{TCommand}"/> that is set during the Handle method.</typeparam>
+        /// <param name="result">The result of the <see cref="ICommandHandler{TCommand}"/>.</param>
+        public void SetResult<TResult>(TResult result) where TResult : class, new()
+        {
+            ObjectResult = result;
         }
 
         /// <summary>

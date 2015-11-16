@@ -12,8 +12,8 @@ namespace AsyncMediator
         /// Implement this method to handle a given <see cref="ICommand"/> that has been sent using the <see cref="IMediator"/>.
         /// </summary>
         /// <param name="command">A class that implements <see cref="ICommand"/>.</param>
-        /// <returns>A <see cref="CommandWorkflowResult"/> that contains <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/>
+        /// <returns>A class that implements <see cref="ICommandWorkflowResult"/> that contains <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/>
         /// messages and a Success flag.</returns>
-        Task<CommandWorkflowResult> Handle(TCommand command);
+        Task<ICommandWorkflowResult> Handle(TCommand command);
     }
 }

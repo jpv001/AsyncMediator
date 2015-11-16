@@ -49,6 +49,7 @@
     <Compile Include="BaseClasses\CommandWorkflowResult.cs" />
     <Compile Include="BaseClasses\CommandWorkflowResult`T.cs" />
     <Compile Include="BaseClasses\ValidationContext.cs" />
+    <Compile Include="Interfaces\ICommandWorkflowResult.cs" />
     <Compile Include="Interfaces\IDomainEvent.cs" />
     <Compile Include="Infrastructure\EventHandlerEnumerableExtensions.cs" />
     <Compile Include="BaseClasses\HandlerOrderAttribute.cs" />

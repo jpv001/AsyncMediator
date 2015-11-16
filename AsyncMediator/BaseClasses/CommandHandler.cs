@@ -39,12 +39,13 @@ namespace AsyncMediator
         /// <param name="command">A class that implements <see cref="ICommand"/>.</param>
         /// <returns>A <see cref="CommandWorkflowResult"/> that contains <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/>
         /// messages and a Success flag.</returns>
-        public async Task<CommandWorkflowResult> Handle(TCommand command)
+        public async Task<ICommandWorkflowResult> Handle(TCommand command)
         {
             // Save the command instance - the command may be used by the Validate and DoHandle methods.
             Command = command;
 
             var context = new ValidationContext();
+            ICommandWorkflowResult workflowResult;
 
             // Perform validation.
             await Validate(context);
@@ -58,7 +59,7 @@ namespace AsyncMediator
             // The command and related events are all async, so use TransactionScopeAsyncFlowOption.Enabled.
             using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
             {
-                await DoHandle(context);
+                workflowResult = await DoHandle(context);
 
                 if (context.ValidationResults.Any())
                 {
@@ -69,8 +70,8 @@ namespace AsyncMediator
 
                 transaction.Complete();
             }
-            
-            return new CommandWorkflowResult();
+
+            return workflowResult ?? new CommandWorkflowResult();
         }
 
         /// <summary>
@@ -89,10 +90,10 @@ namespace AsyncMediator
         /// Override in the child class.
         /// </summary>
         /// <param name="validationContext">The validation context</param>
-        /// <returns>An async task for handling the command.</returns>
+        /// <returns>An async task of type <see cref="ICommandWorkflowResult"/> for handling the result.</returns>
         /// <remarks>
         /// Any errors that occur when handling the Command should be added to the validation context supplied.
         /// </remarks>
-        protected abstract Task DoHandle(ValidationContext validationContext);
+        protected abstract Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext);
     }
 }
