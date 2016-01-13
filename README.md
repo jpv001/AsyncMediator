@@ -4,7 +4,7 @@ An async implementation of the Mediator pattern.
 
 Contains a set of classes used for commands, events and mapping, and the interface and implementation of the (I)Mediator.
 
-The implementation is independant of any dependency injection framework, but can be wired up to use any DI/IoC framework, e.g. Autofac, StructureMap, Ninject etc.
+The implementation is independent of any dependency injection framework, but can be wired up to use any DI/IoC framework, e.g. Autofac, StructureMap, Ninject etc.
 
 To do this, you should register the MultiInstanceFactory and SingleInstanceFactory delegates, your event handlers, command handlers and queries, and the Mediator.
 
