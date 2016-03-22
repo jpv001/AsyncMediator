@@ -179,6 +179,53 @@ namespace AsyncMediator.Test
             Assert.IsTrue(result.Result<TestCommandResult>().ResultingValue == 5);
         }
 
+        [TestMethod]
+        public async Task Commands_CanHandleCommandThatFiresOtherCommandsWithAReturnValue()
+        {
+            // Arrange
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestCommandWithResult>>(new TestCommandWithResultHandler(mediator));
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestMultipleCommandWithResult>>(new TestMultipleCommandHandlerWithResult(mediator));
+           
+            // Act
+           var result = await mediator.Send(new TestMultipleCommandWithResult { Name = "bar" });
+
+            // Assert
+            Assert.IsTrue(result.Result<TestCommandResult>().ResultingValue == 5);
+        }
+
+        [TestMethod]
+        public async Task Commands_CanHandleCommandThatFiresOtherCommandsWithATopLevelError()
+        {
+            // Arrange
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestCommandWithResult>>(new TestCommandWithResultHandler(mediator));
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestMultipleCommandWithResult>>(new TestMultipleCommandHandlerWithResult(mediator));
+
+            // Act
+            var result = await mediator.Send(new TestMultipleCommandWithResult { Name = "foo" });
+
+            // Assert
+            Assert.IsTrue(result.Result<TestCommandResult>() == null && result.ValidationResults.Any());
+        }
+
+        [TestMethod]
+        public async Task Commands_CanHandleCommandThatFiresOtherCommandsWithANestedError()
+        {
+            // Arrange
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestCommandWithResult>>(new TestCommandWithResultHandler(mediator));
+            handlerFactory.AddHandlersForCommandOrQuery<ICommandHandler<TestMultipleCommandWithResult>>(new TestMultipleCommandHandlerWithResult(mediator));
+
+            // Act
+            var result = await mediator.Send(new TestMultipleCommandWithResult { Name = "bar", Id = 999 });
+
+            // Assert
+            Assert.IsTrue(result.Result<TestCommandResult>() == null && result.ValidationResults.Any());
+        }
 
         [TestMethod]
         public async Task Commands_CanHandleCommandWithAReturnValueWithValidationFailures()
