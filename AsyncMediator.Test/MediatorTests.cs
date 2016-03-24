@@ -96,6 +96,34 @@ namespace AsyncMediator.Test
         }
 
         [TestMethod]
+        public async Task ExecuteDeferredEvents_CanAddFromMultipleThreads()
+        {
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+
+            handlerFactory.AddHandlersForEvent(new List<IEventHandler<FakeEvent>>
+            {
+                _autoSubstitute.SubstituteFor<HandlerWithoutAdditionalEvents>()
+            });
+
+            var options = new ParallelOptions { MaxDegreeOfParallelism = 10 };
+
+            //Make sure the mediator can handle events being added from multiple threads (should never lose events)
+            Parallel.For(0, 10, options, i =>
+            {
+                for (var j = 0; j < 1000; ++j)
+                    mediator.DeferEvent(new FakeEvent { Id = (i * 1000) + j });
+            });
+
+            await mediator.ExecuteDeferredEvents();
+
+            foreach (var handler in handlerFactory.GetHandlersFor<FakeEvent>())
+            {
+                handler.Received(10000).Handle(Arg.Any<FakeEvent>()).FireAndForget();
+            }
+        }
+
+        [TestMethod]
         public void EventHandlerOrdering_ShouldOrderHandlersByAttribute()
         {
             // Arrange

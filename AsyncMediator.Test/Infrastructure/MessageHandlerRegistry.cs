@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using AsyncMediator;
@@ -7,7 +8,7 @@ namespace AsyncMediator.Test
 {
     public class MessageHandlerRegistry
     {
-        private readonly IDictionary<Type, List<object>> _eventHandlers = new Dictionary<Type, List<object>>();
+        private readonly ConcurrentDictionary<Type, List<object>> _eventHandlers = new ConcurrentDictionary<Type, List<object>>();
         public Func<SingleInstanceFactory> SingleInstanceDelegate;
         public Func<MultiInstanceFactory> MultiInstanceDelegate;
 
@@ -19,12 +20,12 @@ namespace AsyncMediator.Test
 
         public void AddHandlersForEvent<T>(List<T> handlers)
         {
-            _eventHandlers.Add(typeof(T), handlers.Cast<object>().ToList());
+            _eventHandlers.TryAdd(typeof(T), handlers.Cast<object>().ToList());
         }
 
         public void AddHandlersForCommandOrQuery<T>(T handler)
         {
-            _eventHandlers.Add(typeof(T), new List<object> { handler });
+            _eventHandlers.TryAdd(typeof(T), new List<object> { handler });
         }
 
         public IEnumerable<IEventHandler<T>> GetHandlersFor<T>() where T : IDomainEvent

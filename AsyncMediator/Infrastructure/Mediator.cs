@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,13 +12,16 @@ namespace AsyncMediator
         private readonly MultiInstanceFactory _multiInstanceFactory;
         private readonly SingleInstanceFactory _singleInstanceFactory;
 
-        private readonly List<Func<Task>> _deferredEvents = new List<Func<Task>>();
-        private readonly List<Func<Task>> _queuedEvents = new List<Func<Task>>();
+        private readonly ConcurrentBag<Func<Task>> _deferredEvents = new ConcurrentBag<Func<Task>>();
+
+        //This will allow for the caching of handler types so that they're not constantly created
+        private readonly ConcurrentDictionary<Type, Type> _handlerCache;
 
         public Mediator(MultiInstanceFactory multiInstanceFactory, SingleInstanceFactory singleInstanceFactory)
         {
             _multiInstanceFactory = multiInstanceFactory;
             _singleInstanceFactory = singleInstanceFactory;
+            _handlerCache = new ConcurrentDictionary<Type, Type>();
         }
 
         private async Task Publish<TEvent>(TEvent @event) where TEvent : IDomainEvent
@@ -42,16 +46,9 @@ namespace AsyncMediator
         {
             while (_deferredEvents.Any())
             {
-                _queuedEvents.AddRange(_deferredEvents);
-
-                _deferredEvents.Clear();
-
-                foreach (var @event in _queuedEvents)
-                {
-                    await @event.Invoke().ConfigureAwait(false);
-                }
-
-                _queuedEvents.Clear();
+                Func<Task> @event;
+                _deferredEvents.TryTake(out @event);
+                await @event.Invoke().ConfigureAwait(false);
             }
         }
 
@@ -72,14 +69,14 @@ namespace AsyncMediator
         private ICommandHandler<TCommand> GetCommandHandler<TCommand>(TCommand command)
             where TCommand : ICommand
         {
-            var handlerType = typeof(ICommandHandler<>).MakeGenericType(command.GetType());
-            return (ICommandHandler<TCommand>)_singleInstanceFactory(handlerType);
+            var genericHandlerType = _handlerCache.GetOrAdd(command.GetType(), typeof(ICommandHandler<>).MakeGenericType(command.GetType()));
+            return (ICommandHandler<TCommand>) _singleInstanceFactory(genericHandlerType);
         }
 
         private IEnumerable<IEventHandler<TEvent>> GetEventHandlers<TEvent>(TEvent @event) where TEvent : IDomainEvent
         {
-            var handlerType = typeof(IEventHandler<>).MakeGenericType(@event.GetType());
-            var handlers = _multiInstanceFactory(handlerType);
+            var genericHandlerType = _handlerCache.GetOrAdd(@event.GetType(), typeof(IEventHandler<>).MakeGenericType(@event.GetType()));
+            var handlers = _multiInstanceFactory(genericHandlerType);
 
             return handlers
                 .Cast<IEventHandler<TEvent>>()
