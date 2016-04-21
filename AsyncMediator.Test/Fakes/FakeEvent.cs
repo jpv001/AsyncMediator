@@ -1,7 +1,11 @@
 ﻿namespace AsyncMediator.Test
 {
-    public class FakeEvent : IDomainEvent
+    public class FakeEvent : IFakeEvent
     {
         public int Id { get; set; }
+    }
+
+    public interface IFakeEvent : IDomainEvent
+    {
     }
 }
