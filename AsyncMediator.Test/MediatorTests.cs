@@ -59,6 +59,33 @@ namespace AsyncMediator.Test
         }
 
         [TestMethod]
+        public async Task ExecuteDeferredEvents_WhenCalledWithInterface_ShouldCallAllEventHandlers()
+        {
+            // Arrange
+            var @event = new FakeEvent { Id = 1 };
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+
+            handlerFactory.AddHandlersForEvent(new List<IEventHandler<IFakeEvent>>
+            {
+                _autoSubstitute.SubstituteFor<HandlerForInterfaceDeferringMultipleEvents>(mediator),
+                _autoSubstitute.SubstituteFor<HandlerForInterfaceDeferringSingleEvent>(mediator),
+                _autoSubstitute.SubstituteFor<HandlerForInterfaceWithoutAdditionalEvents>()
+            });
+
+            mediator.DeferEvent<IFakeEvent>(@event);
+
+            // Act
+            await mediator.ExecuteDeferredEvents();
+
+            // Assert
+            foreach (var handler in handlerFactory.GetHandlersFor<IFakeEvent>())
+            {
+                handler.Received().Handle(Arg.Any<FakeEvent>()).FireAndForget();
+            }
+        }
+
+        [TestMethod]
         public async Task ExecuteDeferredEvents_WhenCalled_ShouldExecuteEventHandlersForEventsFiredInHandlers()
         {
             // Arrange

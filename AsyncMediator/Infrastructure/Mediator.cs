@@ -73,7 +73,7 @@ namespace AsyncMediator
 
         private IEnumerable<IEventHandler<TEvent>> GetEventHandlers<TEvent>(TEvent @event) where TEvent : IDomainEvent
         {
-            var genericHandlerType = _handlerCache.GetOrAdd(@event.GetType(), typeof(IEventHandler<>).MakeGenericType(@event.GetType()));
+            var genericHandlerType = _handlerCache.GetOrAdd(typeof(TEvent), typeof(IEventHandler<>).MakeGenericType(typeof(TEvent)));
             var handlers = _multiInstanceFactory(genericHandlerType);
 
             return handlers

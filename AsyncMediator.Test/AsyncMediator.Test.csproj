@@ -58,6 +58,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Fakes\ChainedEventHandler.cs" />
+    <Compile Include="Fakes\HandlerForInterfaceDeferringSingleEvent.cs" />
+    <Compile Include="Fakes\HandlerForInterfaceDeferringMultipleEvents.cs" />
+    <Compile Include="Fakes\HandlerForInterfaceWithoutAdditionalEvents.cs" />
     <Compile Include="Fakes\TestMultipleCommandsWithResult.cs" />
     <Compile Include="Fakes\DependentEventHandler.cs" />
     <Compile Include="Fakes\FakeDataStore.cs" />
