@@ -23,7 +23,8 @@ namespace AsyncMediator
             return source.OrderBy(x =>
             {
                 var attr = x.GetType().GetCustomAttribute<HandlerOrderAttribute>();
-                return (attr != null) ? attr.Value : 0;
+
+                return attr != null ? attr.Value : 0;
             });
         }
     }
