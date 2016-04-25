@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using AsyncMediator;
 
 namespace AsyncMediator.Test
 {
