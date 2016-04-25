@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AutofacContrib.NSubstitute;
@@ -55,6 +56,27 @@ namespace AsyncMediator.Test
             foreach (var handler in handlerFactory.GetHandlersFor<FakeEvent>())
             {
                 handler.Received().Handle(Arg.Any<FakeEvent>()).FireAndForget();
+            }
+        }
+
+
+        [TestMethod]
+        public async Task ExecuteDeferredEvents_WhenCalledWithoutRegisteredHandlers_ShouldNotCallAnyHandlers()
+        {
+            // Arrange
+            var @event = new FakeEvent { Id = 1 };
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+
+            mediator.DeferEvent(@event);
+
+            // Act
+            await mediator.ExecuteDeferredEvents();
+
+            // Assert
+            foreach (var handler in handlerFactory.GetHandlersFor<FakeEvent>())
+            {
+                handler.DidNotReceive().Handle(Arg.Any<FakeEvent>()).FireAndForget();
             }
         }
 
@@ -148,6 +170,21 @@ namespace AsyncMediator.Test
             {
                 handler.Received(10000).Handle(Arg.Any<FakeEvent>()).FireAndForget();
             }
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(MissingMethodException))]
+        public async Task CommandMissing_ShouldThrowEx()
+        {
+            var handlerFactory = new MessageHandlerRegistry();
+            var mediator = new Mediator(handlerFactory.MultiInstanceFactory, handlerFactory.SingleInstanceFactory);
+
+            handlerFactory.AddHandlersForEvent(new List<IEventHandler<FakeEvent>>
+            {
+                _autoSubstitute.SubstituteFor<HandlerWithoutAdditionalEvents>()
+            });
+
+            await mediator.Send(new CommandMissing { Id = 1 });
         }
 
         [TestMethod]

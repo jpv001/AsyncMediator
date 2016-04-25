@@ -9,12 +9,12 @@ namespace AsyncMediator.Test
 
         public HandlerForInterfaceDeferringSingleEvent(IMediator mediator)
         {
-            this._mediator = mediator;
+            _mediator = mediator;
         }
 
         public virtual Task Handle(IFakeEvent @event)
         {
-            this._mediator.DeferEvent(new FakeEventFromHandler { Id = 1 });
+            _mediator.DeferEvent(new FakeEventFromHandler { Id = 1 });
             return Task.FromResult(1);
         }
     }

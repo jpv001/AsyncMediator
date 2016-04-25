@@ -13,10 +13,11 @@ namespace AsyncMediator
 
         public Mediator(MultiInstanceFactory multiInstanceFactory, SingleInstanceFactory singleInstanceFactory)
         {
-            this._factory = new Factory(multiInstanceFactory, singleInstanceFactory);
+            _factory = new Factory(multiInstanceFactory, singleInstanceFactory);
         }
 
-        public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command) where TCommand : ICommand
+        public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command) 
+            where TCommand : ICommand
         {
             return await GetCommandHandler<TCommand>().Handle(command).ConfigureAwait(false);
         }
@@ -31,43 +32,38 @@ namespace AsyncMediator
             Func<Task> @event;
 
             while (_deferredEvents.TryTake(out @event))
-            {
                 await @event.Invoke().ConfigureAwait(false);
-            }
         }
 
         public async Task<TResult> LoadList<TResult>()
         {
-            ILookupQuery<TResult> handler = this._factory.Create<ILookupQuery<TResult>>();
-
+            var handler = _factory.Create<ILookupQuery<TResult>>();
             return await handler.Query();
         }
 
         public async Task<TResult> Query<TCriteria, TResult>(TCriteria criteria)
         {
-            IQuery<TCriteria, TResult> handler = this._factory.Create<IQuery<TCriteria, TResult>>();
-
+            var handler = _factory.Create<IQuery<TCriteria, TResult>>();
             return await handler.Query(criteria);
         }
 
-        private async Task Publish<TEvent>(TEvent @event) where TEvent : IDomainEvent
+        private async Task Publish<TEvent>(TEvent @event) 
+            where TEvent : IDomainEvent
         {
-            foreach (IEventHandler<TEvent> eventHandler in GetEventHandlers<TEvent>())
-            {
+            foreach (var eventHandler in GetEventHandlers<TEvent>())
                 await eventHandler.Handle(@event).ConfigureAwait(false);
-            }
         }
 
         private ICommandHandler<TCommand> GetCommandHandler<TCommand>()
             where TCommand : ICommand
         {
-            return this._factory.Create<ICommandHandler<TCommand>>();
+            return _factory.Create<ICommandHandler<TCommand>>();
         }
 
-        private IEnumerable<IEventHandler<TEvent>> GetEventHandlers<TEvent>() where TEvent : IDomainEvent
+        private IEnumerable<IEventHandler<TEvent>> GetEventHandlers<TEvent>() 
+            where TEvent : IDomainEvent
         {
-            var handlers = this._factory.CreateEnumerableOf<IEventHandler<TEvent>>();
-
+            var handlers = _factory.CreateEnumerableOf<IEventHandler<TEvent>>();
             return handlers.OrderByExecutionOrder();
         }
     }
