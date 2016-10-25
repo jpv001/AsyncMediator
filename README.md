@@ -2,13 +2,18 @@
 
 An async implementation of the Mediator pattern.
 
-Contains a set of classes used for commands, events and mapping, and the interface and implementation of the (I)Mediator.
+Contains a set of classes used for commands, events and mapping, and the interface and implementation of the (I)Mediator. This is a trimmed down version of Jimmy Bogard's https://github.com/jbogard/MediatR
+
+***Installing AsyncMediator***
+
+You should use NuGet to install AsyncMediator into your solution: https://www.nuget.org/packages/AsyncMediator/
+`Install-Package AsyncMediator`
 
 The implementation is independent of any dependency injection framework, but can be wired up to use any DI/IoC framework, e.g. Autofac, StructureMap, Ninject etc.
 
 To do this, you should register the MultiInstanceFactory and SingleInstanceFactory delegates, your event handlers, command handlers and queries, and the Mediator.
 
-Then, anything that has a dependency on the IMediator shall get a fully functional instance of the Mediator.
+Then, anything that has a dependency on the IMediator will get a fully functional instance of the Mediator.
 
 Example (Autofac):
 
