@@ -8,7 +8,9 @@ Contains a set of classes used for commands, events and mapping, and the interfa
 
 You should use NuGet to install AsyncMediator into your solution: https://www.nuget.org/packages/AsyncMediator/
 
-`Install-Package AsyncMediator`
+```
+Install-Package AsyncMediator
+```
 
 The implementation is independent of any dependency injection framework, but can be wired up to use any DI/IoC framework, e.g. Autofac, StructureMap, Ninject etc.
 
