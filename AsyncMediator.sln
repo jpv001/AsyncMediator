@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.27703.2035
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncMediator.Test", "AsyncMediator.Test\AsyncMediator.Test.csproj", "{09DDDDDC-4D38-4979-A508-CA6A93D9BDB0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncMediator", "AsyncMediator\AsyncMediator.csproj", "{C1BD2E47-8B59-4BE3-BBFB-3B1DFDEE31BC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncMediator", "AsyncMediator\AsyncMediator.csproj", "{678BC65B-8CFB-4F84-BFB3-1949C18F011B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncMediator.Test", "AsyncMediator.Test\AsyncMediator.Test.csproj", "{507FC64A-0472-4FF0-9275-F475EF32361B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,19 +13,20 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{09DDDDDC-4D38-4979-A508-CA6A93D9BDB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{09DDDDDC-4D38-4979-A508-CA6A93D9BDB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{09DDDDDC-4D38-4979-A508-CA6A93D9BDB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{09DDDDDC-4D38-4979-A508-CA6A93D9BDB0}.Release|Any CPU.Build.0 = Release|Any CPU
-		{678BC65B-8CFB-4F84-BFB3-1949C18F011B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{678BC65B-8CFB-4F84-BFB3-1949C18F011B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{678BC65B-8CFB-4F84-BFB3-1949C18F011B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{678BC65B-8CFB-4F84-BFB3-1949C18F011B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1BD2E47-8B59-4BE3-BBFB-3B1DFDEE31BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1BD2E47-8B59-4BE3-BBFB-3B1DFDEE31BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1BD2E47-8B59-4BE3-BBFB-3B1DFDEE31BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1BD2E47-8B59-4BE3-BBFB-3B1DFDEE31BC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{507FC64A-0472-4FF0-9275-F475EF32361B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{507FC64A-0472-4FF0-9275-F475EF32361B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{507FC64A-0472-4FF0-9275-F475EF32361B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{507FC64A-0472-4FF0-9275-F475EF32361B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B9128D6A-95A6-41CE-831E-1544AA84DC62}
 		EnterpriseLibraryConfigurationToolBinariesPathV6 = packages\EnterpriseLibrary.TransientFaultHandling.6.0.1304.0\lib\portable-net45+win+wp8;packages\EnterpriseLibrary.TransientFaultHandling.Data.6.0.1304.1\lib\NET45
 	EndGlobalSection
 EndGlobal
