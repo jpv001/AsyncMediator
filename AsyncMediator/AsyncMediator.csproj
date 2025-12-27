@@ -10,16 +10,16 @@
 
     <!-- Package Metadata -->
     <PackageId>AsyncMediator</PackageId>
-    <Version>3.0.0</Version>
+    <Version>3.1.0</Version>
     <Authors>AsyncMediator Contributors</Authors>
-    <Description>A lightweight, high-performance mediator pattern implementation for .NET 9+. Supports commands, queries, and domain events with built-in event deferral, validation, and optional transaction scope support. Zero external dependencies.</Description>
+    <Description>A lightweight, high-performance mediator pattern implementation for .NET 9+. Supports commands, queries, and domain events with built-in event deferral, validation, pipeline behaviors, and optional transaction scope support. Zero external dependencies.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/preemajames/AsyncMediator</PackageProjectUrl>
     <RepositoryUrl>https://github.com/preemajames/AsyncMediator</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>mediator;cqrs;domain-events;command-query;ddd;clean-architecture</PackageTags>
+    <PackageTags>mediator;cqrs;domain-events;command-query;ddd;clean-architecture;pipeline</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>v3.0.0 - Breaking changes: CancellationToken support added to all async APIs. See MIGRATION_GUIDE.md for upgrade instructions.</PackageReleaseNotes>
+    <PackageReleaseNotes>v3.1.0 - Added pipeline behaviors with behaviorFactory for DI integration, expression-compiled delegates for event publishing. See PIPELINE.md.</PackageReleaseNotes>
 
     <!-- Symbol Package for Debugging -->
     <IncludeSymbols>true</IncludeSymbols>
