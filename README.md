@@ -95,6 +95,96 @@ public class SendConfirmationEmailHandler(IEmailService email) : IEventHandler<O
 
 Multiple handlers per event are supported. They execute in DI registration order.
 
+## Pipeline Behaviors (Cross-Cutting Concerns)
+
+Pipeline behaviors wrap handler execution for cross-cutting concerns. No overhead when no behaviors are registered.
+
+### Option 1: DI Factory (Recommended)
+
+Use `behaviorFactory` to resolve open generic behaviors from your DI container. This applies behaviors to ALL commands automatically:
+
+```csharp
+// Register open generic behaviors
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+
+// Use behaviorFactory to resolve behaviors from DI
+services.AddScoped<IMediator>(sp => new Mediator(
+    type => sp.GetServices(type),
+    type => sp.GetRequiredService(type),
+    behaviorFactory: type => sp.GetServices(type)));
+```
+
+### Option 2: Explicit Registration
+
+For specific behaviors on specific commands:
+
+```csharp
+services.AddScoped<IMediator>(sp => new Mediator(
+    type => sp.GetServices(type),
+    type => sp.GetRequiredService(type),
+    behaviors: [
+        new LoggingBehavior<CreateOrderCommand, ICommandWorkflowResult>(),
+        new MetricsBehavior<CreateOrderCommand, ICommandWorkflowResult>()
+    ]));
+```
+
+### Example: Logging Behavior
+
+```csharp
+public class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavior<TRequest, TResponse>> logger)
+    : IPipelineBehavior<TRequest, TResponse>
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Handling {RequestType}", typeof(TRequest).Name);
+        var sw = Stopwatch.StartNew();
+        var response = await next();
+        logger.LogInformation("Handled {RequestType} in {ElapsedMs}ms", typeof(TRequest).Name, sw.ElapsedMilliseconds);
+        return response;
+    }
+}
+```
+
+### Example: Validation with DataAnnotations
+
+Use built-in `System.ComponentModel.DataAnnotations`:
+
+```csharp
+public record CreateOrderCommand(
+    [property: Required, MinLength(1)] Guid CustomerId,
+    [property: Required, MinLength(1)] List<OrderItem> Items) : ICommand;
+
+public class ValidationBehavior<TRequest> : IPipelineBehavior<TRequest, ICommandWorkflowResult>
+    where TRequest : ICommand
+{
+    public Task<ICommandWorkflowResult> Handle(
+        TRequest request,
+        RequestHandlerDelegate<ICommandWorkflowResult> next,
+        CancellationToken cancellationToken)
+    {
+        var context = new System.ComponentModel.DataAnnotations.ValidationContext(request);
+        var results = new List<ValidationResult>();
+
+        if (!Validator.TryValidateObject(request, context, results, validateAllProperties: true))
+        {
+            return Task.FromResult<ICommandWorkflowResult>(
+                new CommandWorkflowResult(results));
+        }
+
+        return next();
+    }
+}
+```
+
+Behaviors execute in registration order, wrapping around the handler like middleware. Each behavior can:
+- Execute logic before/after the handler
+- Short-circuit by not calling `next()`
+- Catch and handle exceptions
+
 ## Transactions
 
 TransactionScope is **opt-in** for performance. Override when ACID guarantees are needed:
@@ -127,6 +217,7 @@ public class TransferFundsHandler(IMediator mediator) : CommandHandler<TransferF
 ## Docs
 
 - [Architecture & Design Decisions](ARCHITECTURE.md)
+- [Pipeline Behaviors Guide](PIPELINE.md)
 - [Migration Guide (v2 → v3)](MIGRATION_GUIDE.md)
 
 ## Cancellation Support

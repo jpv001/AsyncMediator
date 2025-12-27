@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace AsyncMediator;
@@ -9,17 +10,35 @@ namespace AsyncMediator;
 /// </summary>
 /// <param name="multiInstanceFactory">Factory for resolving multiple handler instances (events).</param>
 /// <param name="singleInstanceFactory">Factory for resolving single handler instances (commands, queries).</param>
-public class Mediator(MultiInstanceFactory multiInstanceFactory, SingleInstanceFactory singleInstanceFactory) : IMediator
+/// <param name="behaviors">Optional explicit pipeline behaviors typed for specific request types.</param>
+/// <param name="behaviorFactory">Optional factory for resolving open generic behaviors from DI containers.</param>
+public class Mediator(
+    MultiInstanceFactory multiInstanceFactory,
+    SingleInstanceFactory singleInstanceFactory,
+    IEnumerable<object>? behaviors = null,
+    BehaviorFactory? behaviorFactory = null) : IMediator
 {
     private static readonly ConcurrentDictionary<Type, Func<Mediator, object, CancellationToken, Task>> PublishDelegateCache = new();
 
     private readonly ConcurrentQueue<(Type EventType, object Event)> _deferredEvents = new();
     private readonly Factory _factory = new(multiInstanceFactory, singleInstanceFactory);
+    private readonly BehaviorPipeline _pipeline = behaviors is null && behaviorFactory is null
+        ? BehaviorPipeline.Empty
+        : new BehaviorPipeline(behaviors ?? [], behaviorFactory);
 
     /// <inheritdoc />
     public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command, CancellationToken cancellationToken = default)
-        where TCommand : ICommand =>
-        await GetCommandHandler<TCommand>().Handle(command, cancellationToken).ConfigureAwait(false);
+        where TCommand : ICommand
+    {
+        // Fast path: no behaviors registered
+        if (_pipeline.IsEmpty)
+            return await GetCommandHandler<TCommand>().Handle(command, cancellationToken).ConfigureAwait(false);
+
+        return await _pipeline.Execute<TCommand, ICommandWorkflowResult>(
+            command,
+            () => GetCommandHandler<TCommand>().Handle(command, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public void DeferEvent<TEvent>(TEvent @event) where TEvent : IDomainEvent =>
@@ -40,23 +59,56 @@ public class Mediator(MultiInstanceFactory multiInstanceFactory, SingleInstanceF
     public async Task<TResult> LoadList<TResult>(CancellationToken cancellationToken = default)
     {
         var handler = _factory.Create<ILookupQuery<TResult>>();
-        return await handler.Query(cancellationToken).ConfigureAwait(false);
+
+        // Fast path: no behaviors registered
+        if (_pipeline.IsEmpty)
+            return await handler.Query(cancellationToken).ConfigureAwait(false);
+
+        // Note: LoadList uses a unit/void type as request, behaviors target the result type
+        return await _pipeline.Execute<ILookupQuery<TResult>, TResult>(
+            handler,
+            () => handler.Query(cancellationToken),
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async Task<TResult> Query<TCriteria, TResult>(TCriteria criteria, CancellationToken cancellationToken = default)
     {
         var handler = _factory.Create<IQuery<TCriteria, TResult>>();
-        return await handler.Query(criteria, cancellationToken).ConfigureAwait(false);
+
+        // Fast path: no behaviors registered
+        if (_pipeline.IsEmpty)
+            return await handler.Query(criteria, cancellationToken).ConfigureAwait(false);
+
+        return await _pipeline.Execute<TCriteria, TResult>(
+            criteria,
+            () => handler.Query(criteria, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Creates a compiled delegate for publishing events of the specified type.
+    /// Uses Expression trees to compile native IL at cache-population time,
+    /// eliminating reflection overhead and array allocations on subsequent invocations.
+    /// </summary>
     private static Func<Mediator, object, CancellationToken, Task> CreatePublishDelegate(Type eventType)
     {
+        var mediatorParam = Expression.Parameter(typeof(Mediator), "mediator");
+        var eventParam = Expression.Parameter(typeof(object), "event");
+        var ctParam = Expression.Parameter(typeof(CancellationToken), "ct");
+
         var method = typeof(Mediator)
             .GetMethod(nameof(PublishBoxed), BindingFlags.Instance | BindingFlags.NonPublic)!
             .MakeGenericMethod(eventType);
 
-        return (mediator, @event, ct) => (Task)method.Invoke(mediator, [@event, ct])!;
+        var call = Expression.Call(
+            mediatorParam,
+            method,
+            Expression.Convert(eventParam, eventType),
+            ctParam);
+
+        return Expression.Lambda<Func<Mediator, object, CancellationToken, Task>>(
+            call, mediatorParam, eventParam, ctParam).Compile();
     }
 
     // Non-generic publish entry point for cached delegates

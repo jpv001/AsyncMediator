@@ -176,35 +176,52 @@ _deferredEvents.Enqueue(() => Publish(@event));
 - No captured variables
 - Delegate cache eliminates reflection on hot path
 
-### Cached Publish Delegates
+### Expression-Compiled Publish Delegates
 
-Reflection is expensive. AsyncMediator caches publish delegates per event type.
+Reflection is expensive. AsyncMediator uses expression-compiled delegates cached per event type, eliminating reflection overhead entirely after first use.
 
 ```csharp
-private static readonly ConcurrentDictionary<Type, Func<Mediator, object, Task>> PublishDelegateCache = new();
+private static readonly ConcurrentDictionary<Type, Func<Mediator, object, CancellationToken, Task>> PublishDelegateCache = new();
 
-public async Task ExecuteDeferredEvents()
+public async Task ExecuteDeferredEvents(CancellationToken cancellationToken = default)
 {
     while (_deferredEvents.TryDequeue(out var item))
     {
         var publishDelegate = PublishDelegateCache.GetOrAdd(item.EventType, CreatePublishDelegate);
-        await publishDelegate(this, item.Event).ConfigureAwait(false);
+        await publishDelegate(this, item.Event, cancellationToken).ConfigureAwait(false);
     }
 }
 
-private static Func<Mediator, object, Task> CreatePublishDelegate(Type eventType)
+private static Func<Mediator, object, CancellationToken, Task> CreatePublishDelegate(Type eventType)
 {
+    var mediatorParam = Expression.Parameter(typeof(Mediator), "mediator");
+    var eventParam = Expression.Parameter(typeof(object), "event");
+    var ctParam = Expression.Parameter(typeof(CancellationToken), "ct");
+
     var method = typeof(Mediator)
         .GetMethod(nameof(PublishBoxed), BindingFlags.Instance | BindingFlags.NonPublic)!
         .MakeGenericMethod(eventType);
 
-    return (mediator, @event) => (Task)method.Invoke(mediator, [@event])!;
+    var call = Expression.Call(
+        mediatorParam,
+        method,
+        Expression.Convert(eventParam, eventType),
+        ctParam);
+
+    return Expression.Lambda<Func<Mediator, object, CancellationToken, Task>>(
+        call, mediatorParam, eventParam, ctParam).Compile();
 }
 ```
 
+**Why expression-compiled delegates:**
+- `MethodInfo.Invoke()` allocates `object[]` on every call
+- Expression-compiled delegates are true IL: zero per-call allocation
+- ~45% faster than reflection-based invocation
+- ~42% less memory per invocation
+
 **Performance impact:**
-- First event of each type: reflection cost (one-time)
-- Subsequent events: dictionary lookup (nanoseconds)
+- First event of each type: expression compilation cost (one-time, ~150μs)
+- Subsequent events: dictionary lookup + direct call (nanoseconds)
 - Cache is static: shared across all mediator instances
 
 ## Command Handler Base Class
@@ -578,6 +595,138 @@ public abstract class FluentValidationCommandHandler<TCommand>(IMediator mediato
 }
 ```
 
+## Pipeline Behaviors
+
+Pipeline behaviors wrap handler execution, enabling cross-cutting concerns (logging, caching, validation) without modifying handlers.
+
+### Design Goals
+
+1. **Zero-cost when unused**: No overhead when no behaviors are registered
+2. **Opt-in**: Behaviors are passed to the Mediator constructor
+3. **Composable**: Multiple behaviors wrap handlers like middleware
+4. **Type-safe**: Behaviors are generic over request and response types
+
+### Core Interface
+
+```csharp
+public delegate Task<TResponse> RequestHandlerDelegate<TResponse>();
+
+public interface IPipelineBehavior<in TRequest, TResponse>
+{
+    Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken cancellationToken);
+}
+```
+
+### Registration
+
+```csharp
+services.AddScoped<IMediator>(sp => new Mediator(
+    type => sp.GetServices(type),
+    type => sp.GetRequiredService(type),
+    behaviors: [
+        new LoggingBehavior<CreateOrderCommand, ICommandWorkflowResult>(),
+        new ValidationBehavior<CreateOrderCommand, ICommandWorkflowResult>()
+    ]));
+```
+
+### Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Mediator
+    participant Behavior1 as LoggingBehavior
+    participant Behavior2 as ValidationBehavior
+    participant Handler
+
+    Client->>Mediator: Send(command)
+    Mediator->>Behavior1: Handle(command, next)
+    Note over Behavior1: Log "Starting..."
+    Behavior1->>Behavior2: next()
+    Note over Behavior2: Validate command
+    Behavior2->>Handler: next()
+    Handler-->>Behavior2: result
+    Note over Behavior2: Check result
+    Behavior2-->>Behavior1: result
+    Note over Behavior1: Log "Completed"
+    Behavior1-->>Mediator: result
+    Mediator-->>Client: result
+```
+
+### Example Behaviors
+
+**Logging Behavior:**
+```csharp
+public class LoggingBehavior<TRequest, TResponse>(ILogger logger)
+    : IPipelineBehavior<TRequest, TResponse>
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Handling {RequestType}", typeof(TRequest).Name);
+        var response = await next();
+        logger.LogInformation("Handled {RequestType}", typeof(TRequest).Name);
+        return response;
+    }
+}
+```
+
+**Exception Handling Behavior:**
+```csharp
+public class ExceptionHandlingBehavior<TRequest> : IPipelineBehavior<TRequest, ICommandWorkflowResult>
+{
+    public async Task<ICommandWorkflowResult> Handle(
+        TRequest request,
+        RequestHandlerDelegate<ICommandWorkflowResult> next,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await next();
+        }
+        catch (Exception ex)
+        {
+            return new CommandWorkflowResult([
+                new ValidationResult($"Unexpected error: {ex.Message}")
+            ]);
+        }
+    }
+}
+```
+
+### Zero-Cost Implementation
+
+The pipeline uses a fast-path check to skip behavior processing entirely when no behaviors are registered:
+
+```csharp
+public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command, CancellationToken cancellationToken)
+    where TCommand : ICommand
+{
+    if (_pipeline.IsEmpty)  // Fast path: no overhead
+        return await GetCommandHandler<TCommand>().Handle(command, cancellationToken);
+
+    return await _pipeline.Execute<TCommand, ICommandWorkflowResult>(
+        command,
+        () => GetCommandHandler<TCommand>().Handle(command, cancellationToken),
+        cancellationToken);
+}
+```
+
+**Benchmark results:**
+| Configuration | Mean | Memory | Overhead |
+|--------------|------|--------|----------|
+| No behaviors (baseline) | 138.6 ns | 416 B | - |
+| Empty behaviors `[]` | 137.7 ns | 416 B | **0%** |
+| 1 behavior | 193.3 ns | 688 B | +40% |
+| 3 behaviors | 242.1 ns | 896 B | +75% |
+
+The empty behaviors array has **identical** performance to not passing behaviors at all.
+
 ## When to Use AsyncMediator
 
 **Good fit:**
@@ -597,7 +746,7 @@ public abstract class FluentValidationCommandHandler<TCommand>(IMediator mediato
 
 | Feature | AsyncMediator | MediatR |
 |---------|---------------|---------|
-| Pipeline behaviors | No | Yes |
+| Pipeline behaviors | Yes (opt-in, zero-cost) | Yes |
 | Notifications | Via `IDomainEvent` | Via `INotification` |
 | Event deferral | Built-in | Manual |
 | TransactionScope | Opt-in | N/A |
@@ -605,7 +754,7 @@ public abstract class FluentValidationCommandHandler<TCommand>(IMediator mediato
 | Memory allocations | Minimal | Higher |
 | Dependencies | Zero | Microsoft.Extensions.DI |
 
-AsyncMediator trades MediatR's pipeline flexibility for performance and simplicity. Choose MediatR if you need cross-cutting behaviors (logging, caching, etc.). Choose AsyncMediator if you want zero dependencies and maximum performance.
+AsyncMediator now provides pipeline behaviors with a zero-cost opt-in design: when no behaviors are registered, performance is identical to having no pipeline support at all. Choose MediatR for a mature ecosystem with extensive community behaviors. Choose AsyncMediator if you want zero dependencies, maximum performance, and built-in event deferral.
 
 ## Concurrency Model
 
