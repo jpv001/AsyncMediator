@@ -173,3 +173,10 @@ ErrorLog/
 # webstorm projects
 .idea
 PublishedPackages/
+
+# BenchmarkDotNet artifacts
+BenchmarkDotNet.Artifacts/
+
+# NuGet package output
+artifacts/
+.claude

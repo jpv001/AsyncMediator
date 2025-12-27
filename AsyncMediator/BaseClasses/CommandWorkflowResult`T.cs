@@ -1,73 +1,53 @@
-﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
-namespace AsyncMediator
+namespace AsyncMediator;
+
+/// <summary>
+/// Generic command result with a typed result value.
+/// </summary>
+/// <typeparam name="TResult">The type of the result value.</typeparam>
+public class CommandWorkflowResult<TResult> : CommandWorkflowResult
+    where TResult : class, new()
 {
     /// <summary>
-    /// A generic version of the <see cref="CommandWorkflowResult"/> class, including a workflow result object.
+    /// Initializes a new successful command result with the specified result value.
     /// </summary>
-    /// <typeparam name="TResult">The type of workflow result</typeparam>
-    public class CommandWorkflowResult<TResult> : CommandWorkflowResult
-        where TResult : class, new()
+    /// <param name="result">The result value.</param>
+    public CommandWorkflowResult(TResult result) => SetResult(result);
+
+    /// <summary>
+    /// Initializes a new command result with a result value and validation results.
+    /// </summary>
+    /// <param name="result">The result value.</param>
+    /// <param name="validationResults">The validation results.</param>
+    public CommandWorkflowResult(TResult result, List<ValidationResult> validationResults)
     {
-        /// <summary>
-        /// Default constructor.
-        /// Creates a new <see cref="CommandWorkflowResult{T}"/>.
-        /// </summary>
-        public CommandWorkflowResult()
-        {
-        }
-
-        /// <summary>
-        /// Public constructor.
-        /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
-        /// </summary>
-        /// <param name="result">The result instance.</param>
-        public CommandWorkflowResult(TResult result)
-        {
-            SetResult(result);
-        }
-
-        /// <summary>
-        /// Public constructor.
-        /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
-        /// </summary>
-        /// <param name="result">The result instance.</param>
-        /// <param name="validationResults">Existing validation results that you want to create the <see cref="CommandWorkflowResult{T}"/> with.</param>
-        public CommandWorkflowResult(TResult result, IList<ValidationResult> validationResults)
-        {
-            SetResult(result);
-            ValidationResults = validationResults;
-        }
-
-        /// <summary>
-        /// Public constructor.
-        /// Creates a new <see cref="CommandWorkflowResult{T}"/> with a Result.
-        /// </summary>
-        /// <param name="validationResults">Existing validation results that you want to create the <see cref="CommandWorkflowResult{T}"/> with.</param>
-        public CommandWorkflowResult(IEnumerable<ValidationResult> validationResults)
-            : base(validationResults)
-        { }
-
-        /// <summary>
-        /// Determines whether the specified object is equal to this object.
-        /// </summary>
-        /// <param name="obj">The object to compare.</param>
-        /// <returns>True if they are equal; false if not.</returns>
-        public override bool Equals(object obj)
-        {
-            var other = obj as CommandWorkflowResult<TResult>;
-            return other != null && ResultEquals(other.ObjectResult as TResult) && base.Equals(other);
-        }
-
-        /// <summary>
-        /// Determines whether the Result object is equal to the other Result object.
-        /// </summary>
-        /// <param name="otherResult">The other result.</param>
-        /// <returns>True if they are equal; false if not.</returns>
-        protected bool ResultEquals(TResult otherResult)
-        {
-            return (ObjectResult == null) ? (otherResult == null) : ObjectResult.Equals(otherResult);
-        }
+        SetResult(result);
+        ValidationResults = validationResults;
     }
+
+    /// <summary>
+    /// Initializes a new command result with validation errors (no result value).
+    /// </summary>
+    /// <param name="validationResults">The validation results containing errors.</param>
+    public CommandWorkflowResult(IEnumerable<ValidationResult> validationResults)
+        : base(validationResults)
+    { }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) =>
+        obj is CommandWorkflowResult<TResult> other &&
+        ResultEquals(other.ObjectResult as TResult) &&
+        base.Equals(other);
+
+    /// <summary>
+    /// Determines whether the specified result value is equal to this result value.
+    /// </summary>
+    /// <param name="otherResult">The result value to compare.</param>
+    /// <returns>True if the result values are equal.</returns>
+    protected bool ResultEquals(TResult? otherResult) =>
+        ObjectResult?.Equals(otherResult) ?? otherResult is null;
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(base.GetHashCode(), ObjectResult);
 }

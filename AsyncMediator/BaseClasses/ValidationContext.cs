@@ -1,45 +1,33 @@
-﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
-namespace AsyncMediator
+namespace AsyncMediator;
+
+/// <summary>
+/// Context for collecting validation errors during command processing.
+/// </summary>
+/// <remarks>
+/// Used by <see cref="CommandHandler{TCommand}"/> to accumulate validation errors
+/// during the <see cref="CommandHandler{TCommand}.Validate"/> phase.
+/// </remarks>
+public class ValidationContext
 {
     /// <summary>
-    /// A context used for validating commands.
-    /// Contains a list of <see cref="ValidationResult"/> objects.
+    /// Gets or sets the list of validation results accumulated during validation.
     /// </summary>
-    public class ValidationContext
-    {
-        /// <summary>
-        /// The validation results.
-        /// </summary>
-        public List<ValidationResult> ValidationResults { get; set; }
+    public List<ValidationResult> ValidationResults { get; set; } = [];
 
-        /// <summary>
-        /// Default constructor.
-        /// Creates a new <see cref="ValidationContext"/> with no errors.
-        /// </summary>
-        public ValidationContext()
-        {
-            ValidationResults = new List<ValidationResult>();
-        }
+    /// <summary>
+    /// Adds a validation error for a specific member.
+    /// </summary>
+    /// <param name="memberName">The name of the member that caused the error.</param>
+    /// <param name="errorMessage">The error message.</param>
+    public void AddError(string memberName, string errorMessage) =>
+        ValidationResults.Add(new ValidationResult(errorMessage, [memberName]));
 
-        /// <summary>
-        /// Adds a validation error.
-        /// </summary>
-        /// <param name="memberName">The member that has caused validation to fail.</param>
-        /// <param name="errorMessage">The validation error message.</param>
-        public void AddError(string memberName, string errorMessage)
-        {
-            ValidationResults.Add(new ValidationResult(errorMessage, new[] { memberName }));
-        }
-
-        /// <summary>
-        /// Adds a number of validation errors.
-        /// </summary>
-        /// <param name="errors">The list of <see cref="ValidationResult"/> objects.</param>
-        public void AddErrors(IEnumerable<ValidationResult> errors)
-        {
-            ValidationResults.AddRange(errors);
-        }
-    }
+    /// <summary>
+    /// Adds multiple validation errors.
+    /// </summary>
+    /// <param name="errors">The validation results to add.</param>
+    public void AddErrors(IEnumerable<ValidationResult> errors) =>
+        ValidationResults.AddRange(errors);
 }

@@ -1,99 +1,96 @@
-﻿using System.Linq;
-using System.Threading.Tasks;
 using System.Transactions;
 
-namespace AsyncMediator
+namespace AsyncMediator;
+
+/// <summary>
+/// Abstract base class for command handlers with validation and optional transaction support.
+/// </summary>
+/// <typeparam name="TCommand">The type of command this handler processes.</typeparam>
+/// <remarks>
+/// Override <see cref="UseTransactionScope"/> to control transaction behavior.
+/// Default is false for maximum performance. Set to true when ACID compliance is required.
+/// </remarks>
+public abstract class CommandHandler<TCommand>(IMediator mediator) : ICommandHandler<TCommand>
+    where TCommand : ICommand
 {
     /// <summary>
-    /// An abstract base class for a command handler.
+    /// Gets the command being processed.
     /// </summary>
-    /// <typeparam name="TCommand">A <see cref="ICommand"/> that this handler is responsible for processing.</typeparam>
-    /// <remarks>
-    /// This is more of an example of how a command handler looks - you may wish to directly implement <see cref="ICommandHandler{TCommand}"/> 
-    /// to support your own workflow and transactional boundaries.
-    /// </remarks>
-    public abstract class CommandHandler<TCommand> : ICommandHandler<TCommand> where TCommand : ICommand
+    protected TCommand Command { get; private set; } = default!;
+
+    /// <summary>
+    /// Gets the mediator instance for sending additional commands or deferring events.
+    /// </summary>
+    protected IMediator Mediator { get; } = mediator;
+
+    /// <summary>
+    /// Gets the cancellation token for the current command execution.
+    /// Use this in derived classes to check for cancellation during long-running operations.
+    /// </summary>
+    protected CancellationToken CancellationToken { get; private set; }
+
+    /// <summary>
+    /// Controls whether command execution is wrapped in a TransactionScope.
+    /// Override and return true when ACID compliance is required.
+    /// Default is false for maximum performance.
+    /// </summary>
+    protected virtual bool UseTransactionScope => false;
+
+    /// <inheritdoc />
+    public async Task<ICommandWorkflowResult> Handle(TCommand command, CancellationToken cancellationToken = default)
     {
-        /// <summary>
-        /// The command instance.
-        /// </summary>
-        protected TCommand Command { get; private set; }
+        Command = command;
+        CancellationToken = cancellationToken;
+        var context = new ValidationContext();
 
-        /// <summary>
-        /// The mediator instance.
-        /// </summary>
-        protected IMediator Mediator { get; private set; }
+        cancellationToken.ThrowIfCancellationRequested();
+        await Validate(context, cancellationToken).ConfigureAwait(false);
+        if (context.ValidationResults.Count > 0)
+            return new CommandWorkflowResult(context.ValidationResults);
 
-        /// <summary>
-        /// Protected constructor.
-        /// </summary>
-        /// <param name="mediator">The <see cref="IMediator"/> instance.</param>
-        protected CommandHandler(IMediator mediator)
-        {
-            Mediator = mediator;
-        }
-
-        /// <summary>
-        /// Handles the given <see cref="ICommand"/> that has been sent using the <see cref="IMediator"/>.
-        /// </summary>
-        /// <param name="command">A class that implements <see cref="ICommand"/>.</param>
-        /// <returns>A <see cref="CommandWorkflowResult"/> that contains <see cref="System.ComponentModel.DataAnnotations.ValidationResult"/>
-        /// messages and a Success flag.</returns>
-        public async Task<ICommandWorkflowResult> Handle(TCommand command)
-        {
-            // Save the command instance - the command may be used by the Validate and DoHandle methods.
-            Command = command;
-
-            var context = new ValidationContext();
-            ICommandWorkflowResult workflowResult;
-
-            // Perform validation.
-            await Validate(context);
-            if (context.ValidationResults.Any())
-            {
-                return new CommandWorkflowResult(context.ValidationResults);
-            }
-
-            // Handle the event, and execute any deferred events that have been raised via the mediator.
-            // Making sure that both the commands and events are wrapped up within a single transaction.
-            // The command and related events are all async, so use TransactionScopeAsyncFlowOption.Enabled.
-            using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
-            {
-                workflowResult = await DoHandle(context);
-
-                if (context.ValidationResults.Any())
-                {
-                    return new CommandWorkflowResult(context.ValidationResults);
-                }
-
-                await Mediator.ExecuteDeferredEvents();
-
-                transaction.Complete();
-            }
-
-            return workflowResult ?? new CommandWorkflowResult();
-        }
-
-        /// <summary>
-        /// Performs any necessary validation.
-        /// Override in the child class.
-        /// </summary>
-        /// <param name="validationContext">The validation context</param>
-        /// <returns>An async task for validating the command.</returns>
-        /// <remarks>
-        /// This method should interrogate the Command and add any validation errors to the validation context supplied.
-        /// </remarks>
-        protected abstract Task Validate(ValidationContext validationContext);
-
-        /// <summary>
-        /// Handles the command.
-        /// Override in the child class.
-        /// </summary>
-        /// <param name="validationContext">The validation context</param>
-        /// <returns>An async task of type <see cref="ICommandWorkflowResult"/> for handling the result.</returns>
-        /// <remarks>
-        /// Any errors that occur when handling the Command should be added to the validation context supplied.
-        /// </remarks>
-        protected abstract Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext);
+        return UseTransactionScope
+            ? await HandleWithTransaction(context, cancellationToken).ConfigureAwait(false)
+            : await HandleWithoutTransaction(context, cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task<ICommandWorkflowResult> HandleWithTransaction(ValidationContext context, CancellationToken cancellationToken)
+    {
+        using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var workflowResult = await DoHandle(context, cancellationToken).ConfigureAwait(false);
+        if (context.ValidationResults.Count > 0)
+            return new CommandWorkflowResult(context.ValidationResults);
+
+        await Mediator.ExecuteDeferredEvents(cancellationToken).ConfigureAwait(false);
+        transaction.Complete();
+
+        return workflowResult ?? CommandWorkflowResult.Ok();
+    }
+
+    private async Task<ICommandWorkflowResult> HandleWithoutTransaction(ValidationContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var workflowResult = await DoHandle(context, cancellationToken).ConfigureAwait(false);
+        if (context.ValidationResults.Count > 0)
+            return new CommandWorkflowResult(context.ValidationResults);
+
+        await Mediator.ExecuteDeferredEvents(cancellationToken).ConfigureAwait(false);
+
+        return workflowResult ?? CommandWorkflowResult.Ok();
+    }
+
+    /// <summary>
+    /// Validates the command. Add errors to context.ValidationResults.
+    /// </summary>
+    /// <param name="validationContext">The validation context to add errors to.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    protected abstract Task Validate(ValidationContext validationContext, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Executes the command logic after validation passes.
+    /// </summary>
+    /// <param name="validationContext">The validation context.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    protected abstract Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext, CancellationToken cancellationToken);
 }
