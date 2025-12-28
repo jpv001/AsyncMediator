@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/AsyncMediator.svg)](https://www.nuget.org/packages/AsyncMediator)
 [![NuGet](https://img.shields.io/nuget/v/AsyncMediator.SourceGenerator.svg?label=SourceGenerator)](https://www.nuget.org/packages/AsyncMediator.SourceGenerator)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache License 2.0](https://img.shields.io/badge/license-Apache%20License%202.0-blue)](https://opensource.org/license/apache-2-0)
 
 A lightweight, high-performance mediator for .NET 9/10 with compile-time handler discovery.
 
@@ -230,5 +230,6 @@ Found a bug or have a feature request? [Open an issue](https://github.com/jpv001
 ## License
 
 [Apache License 2.0](License.md)
+
 
 
