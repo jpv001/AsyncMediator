@@ -26,6 +26,10 @@ This indirection enables clean architecture, testability, and cross-cutting conc
 - Real-time event streaming (use a message bus)
 - Event sourcing (use specialized frameworks)
 
+## See It In Action
+
+**[samples/TodoApi/START_HERE.md](samples/TodoApi/START_HERE.md)** - A working .NET 10 demo with Redis showing commands, queries, events, and pipeline behaviors. Run it and see the flow in action.
+
 ## Quick Start
 
 ### Install
@@ -248,6 +252,48 @@ public class TransferFundsHandler(IMediator mediator) : CommandHandler<TransferF
 {
     protected override bool UseTransactionScope => true;  // Wraps DoHandle in TransactionScope
 }
+```
+
+Events execute *after* the transaction commits successfully.
+
+### Returning Data from Commands
+
+Use `SetResult()` to return data from command handlers:
+
+```csharp
+protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
+{
+    var order = await repo.Create(Command.CustomerId, Command.Items, ct);
+
+    var result = CommandWorkflowResult.Ok();
+    result.SetResult(order);  // Attach the created entity
+    return result;
+}
+
+// Caller retrieves it:
+var result = await mediator.Send(command, ct);
+var order = result.Result<Order>();  // null if failed or wrong type
+```
+
+### Event Behavior Gotchas
+
+**Nested commands share the event queue:**
+```csharp
+Mediator.DeferEvent(new ParentEvent());
+await Mediator.Send(new ChildCommand(), ct);  // Child defers its own events
+return CommandWorkflowResult.Ok();
+// All events (parent + child) fire here, in order
+```
+
+**Event handler failures don't rollback commands** - the command has already succeeded. Use idempotent handlers or the outbox pattern for guaranteed delivery.
+
+**Don't call `ExecuteDeferredEvents()` manually** - `CommandHandler` does this automatically after `DoHandle` succeeds.
+
+### Excluding Handlers from Discovery
+
+```csharp
+[ExcludeFromMediator]
+public sealed class DraftHandler : CommandHandler<MyCommand> { ... }
 ```
 
 ## Documentation
