@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AsyncMediator Todo Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 { font-size: 28px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 14px; }
+
+        .input-section {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #todoInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.2s;
+        }
+
+        #todoInput:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover { background: #5568d3; }
+        button:active { transform: scale(0.98); }
+
+        .todos {
+            padding: 20px;
+            min-height: 200px;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.2s;
+            gap: 12px;
+        }
+
+        .todo-item:hover {
+            background: #e9ecef;
+            transform: translateX(4px);
+        }
+
+        .todo-item.completed {
+            opacity: 0.6;
+        }
+
+        .todo-item.completed .todo-text {
+            text-decoration: line-through;
+        }
+
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            border: 2px solid #667eea;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .checkbox:hover { background: #f0f0ff; }
+
+        .checkbox.checked {
+            background: #667eea;
+        }
+
+        .checkbox.checked::after {
+            content: '✓';
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .todo-text {
+            flex: 1;
+            font-size: 15px;
+            color: #333;
+        }
+
+        .delete-btn {
+            padding: 6px 12px;
+            background: #dc3545;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .todo-item:hover .delete-btn { opacity: 1; }
+        .delete-btn:hover { background: #c82333; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .stats {
+            padding: 16px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AsyncMediator Todo</h1>
+            <p>Powered by .NET 10 + Redis + CQRS</p>
+        </div>
+
+        <div class="input-section">
+            <input
+                type="text"
+                id="todoInput"
+                placeholder="What needs to be done?"
+                onkeypress="if(event.key==='Enter') addTodo()"
+            />
+            <button onclick="addTodo()">Add Todo</button>
+        </div>
+
+        <div class="todos" id="todoList"></div>
+
+        <div class="stats" id="stats"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/todos';
+
+        async function loadTodos() {
+            try {
+                const res = await fetch(API_BASE);
+                const todos = await res.json();
+                renderTodos(todos);
+                updateStats(todos);
+            } catch (err) {
+                console.error('Failed to load todos:', err);
+            }
+        }
+
+        async function addTodo() {
+            const input = document.getElementById('todoInput');
+            const title = input.value.trim();
+
+            if (!title) return;
+
+            try {
+                await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+
+                input.value = '';
+                loadTodos();
+            } catch (err) {
+                console.error('Failed to add todo:', err);
+            }
+        }
+
+        async function completeTodo(id) {
+            try {
+                await fetch(`${API_BASE}/${id}/complete`, { method: 'PUT' });
+                loadTodos();
+            } catch (err) {
+                console.error('Failed to complete todo:', err);
+            }
+        }
+
+        async function deleteTodo(id) {
+            try {
+                await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+                loadTodos();
+            } catch (err) {
+                console.error('Failed to delete todo:', err);
+            }
+        }
+
+        function renderTodos(todos) {
+            const list = document.getElementById('todoList');
+
+            if (todos.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
+                        </svg>
+                        <p>No todos yet. Add one above!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = todos.map(todo => `
+                <div class="todo-item ${todo.isCompleted ? 'completed' : ''}">
+                    <div
+                        class="checkbox ${todo.isCompleted ? 'checked' : ''}"
+                        onclick="${todo.isCompleted ? '' : `completeTodo('${todo.id}')`}"
+                    ></div>
+                    <div class="todo-text">${escapeHtml(todo.title)}</div>
+                    <button class="delete-btn" onclick="deleteTodo('${todo.id}')">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function updateStats(todos) {
+            const total = todos.length;
+            const completed = todos.filter(t => t.isCompleted).length;
+            const active = total - completed;
+
+            document.getElementById('stats').textContent =
+                `${total} total • ${active} active • ${completed} completed`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        loadTodos();
+        setInterval(loadTodos, 5000);
+    </script>
+</body>
+</html>

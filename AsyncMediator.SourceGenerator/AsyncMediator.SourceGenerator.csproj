@@ -12,7 +12,7 @@
     <NoWarn>$(NoWarn);RS2008;RS1041</NoWarn>
 
     <PackageId>AsyncMediator.SourceGenerator</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.1.1</Version>
     <Authors>AsyncMediator Contributors</Authors>
     <Description>Source generator for AsyncMediator. Auto-discovers handlers at compile time. Requires .NET 9+ SDK.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -21,10 +21,11 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>mediator;source-generator;cqrs;dependency-injection;aot</PackageTags>
 
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <IncludeSymbols>false</IncludeSymbols>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
