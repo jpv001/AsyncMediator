@@ -1,5 +1,7 @@
 # Pipeline Behaviors Guide
 
+The below samples are provided as an example of behaviors - these are NOT bundled with the nuget package.
+
 ## Overview
 
 Pipeline behaviors wrap handler execution, enabling cross-cutting concerns without modifying handlers.
@@ -308,3 +310,4 @@ src/
 │       └── UnitOfWorkBehavior.cs
 └── Program.cs
 ```
+
