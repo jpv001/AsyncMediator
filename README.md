@@ -225,8 +225,9 @@ services.AddTransient<ICommandHandler<CreateOrderCommand>, CreateOrderHandler>()
 
 ## Contributing
 
-Found a bug or have a feature request? [Open an issue](https://github.com/preemajames/AsyncMediator/issues).
+Found a bug or have a feature request? [Open an issue](https://github.com/jpv001/AsyncMediator/issues).
 
 ## License
 
 [MIT](License.md)
+
