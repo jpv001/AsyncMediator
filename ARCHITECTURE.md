@@ -1,6 +1,6 @@
 # AsyncMediator Architecture
 
-A lightweight, high-performance mediator pattern implementation for .NET 9/10 with zero-allocation event deferral and minimal memory overhead.
+A lightweight, high-performance mediator pattern implementation for .NET 9/10 with minimal-allocation event deferral and low memory overhead.
 
 ## Design Philosophy
 
@@ -85,6 +85,7 @@ AsyncMediator uses function delegates instead of service locator anti-patterns. 
 ```csharp
 public delegate object SingleInstanceFactory(Type serviceType);
 public delegate IEnumerable<object> MultiInstanceFactory(Type serviceType);
+public delegate IEnumerable<object> BehaviorFactory(Type behaviorType);
 
 internal class Factory(MultiInstanceFactory multi, SingleInstanceFactory single)
 {
@@ -95,6 +96,13 @@ internal class Factory(MultiInstanceFactory multi, SingleInstanceFactory single)
         (T)single(typeof(T));
 }
 ```
+
+**Three factory delegates:**
+| Delegate | Purpose | Used By |
+|----------|---------|---------|
+| `SingleInstanceFactory` | Resolve single handler (commands, queries) | `IMediator.Send()`, `IMediator.Query()` |
+| `MultiInstanceFactory` | Resolve multiple handlers (events) | `IMediator.ExecuteDeferredEvents()` |
+| `BehaviorFactory` | Resolve pipeline behaviors from DI | `BehaviorPipeline.Execute()` |
 
 **Why this pattern:**
 - Decouples from specific DI frameworks
@@ -152,9 +160,9 @@ sequenceDiagram
     end
 ```
 
-### Zero-Allocation Event Deferral
+### Minimal-Allocation Event Deferral
 
-Event deferral avoids closure allocations by storing the event type and instance as a tuple.
+Event deferral avoids closure allocations by storing the event type and instance as a tuple. Note: `ConcurrentQueue` allocates internal nodes per enqueue, so "minimal-allocation" is more accurate than "zero-allocation".
 
 ```csharp
 private readonly ConcurrentQueue<(Type EventType, object Event)> _deferredEvents = new();
@@ -357,12 +365,30 @@ AsyncMediator is designed to make correct usage easy ("pit of success"):
 - For event handlers that must participate in the transaction (e.g., writing to an event store), consider using an outbox pattern
 
 **Automatic queue cleanup:**
-- If a command throws an exception, the deferred event queue is automatically cleared
+- If a command throws an exception, the deferred event queue is automatically cleared via `ClearDeferredEvents()`
 - This prevents events from one failed command leaking into subsequent commands
-- Use `ClearDeferredEvents()` for manual control when needed
+- Use `ClearDeferredEvents()` for manual control in conditional failure scenarios:
 
-**Zero-allocation nuance:**
-- "Zero allocation" for event deferral is achieved after the queue's internal segments are warmed and the delegate cache is populated
+```csharp
+protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
+{
+    Mediator.DeferEvent(new OrderCreatedEvent(orderId));
+
+    var externalResult = await externalService.Process(ct);
+    if (!externalResult.Success)
+    {
+        // Manually clear events on business logic failure
+        Mediator.ClearDeferredEvents();
+        return CommandWorkflowResult.WithError("External", "Processing failed");
+    }
+
+    return CommandWorkflowResult.Ok();
+}
+```
+
+**Minimal-allocation nuance:**
+- Event deferral allocates `ConcurrentQueue` nodes internally (~32 bytes per event)
+- Expression-compiled delegates eliminate per-call reflection overhead after initial population
 - First-time event types incur a one-time reflection and expression compilation cost (~150μs)
 
 ## Empty List Singleton Pattern
@@ -373,22 +399,34 @@ AsyncMediator is designed to make correct usage easy ("pit of success"):
 public class CommandWorkflowResult : ICommandWorkflowResult
 {
     private static readonly List<ValidationResult> EmptyValidationResults = [];
+    private List<ValidationResult> _validationResults = EmptyValidationResults;
 
-    public CommandWorkflowResult() => ValidationResults = EmptyValidationResults;
+    public CommandWorkflowResult() { }
 
-    public List<ValidationResult> ValidationResults { get; protected set; }
+    public List<ValidationResult> ValidationResults
+    {
+        get
+        {
+            EnsureMutableList();  // Note: getter allocates if accessed on success case
+            return _validationResults;
+        }
+        protected set => _validationResults = value;
+    }
 
-    public bool Success => ValidationResults.Count == 0;
+    // Success reads _validationResults directly to avoid allocation
+    public bool Success => _validationResults.Count == 0;
 
     public static CommandWorkflowResult Ok() => new();
 
     private void EnsureMutableList()
     {
-        if (ReferenceEquals(ValidationResults, EmptyValidationResults))
-            ValidationResults = [];
+        if (ReferenceEquals(_validationResults, EmptyValidationResults))
+            _validationResults = [];
     }
 }
 ```
+
+> **Note:** The `ValidationResults` getter calls `EnsureMutableList()`, so accessing the property directly (e.g., `result.ValidationResults.Count`) allocates a new list even for success cases. The `Success` property reads `_validationResults` directly to avoid this. Prefer using `Success` over checking `ValidationResults.Count`.
 
 **Why this works:**
 
@@ -450,9 +488,9 @@ graph LR
         Multi[MultiInstanceFactory]
     end
 
-    subgraph "Mediator"
+    subgraph "Mediator Core"
         Factory[Factory]
-        Mediator[Mediator]
+        MediatorInstance[Mediator]
     end
 
     subgraph "Runtime"
@@ -466,9 +504,9 @@ graph LR
     Single --> Factory
     Multi --> Factory
 
-    Factory --> Mediator
+    Factory --> MediatorInstance
 
-    Mediator --> Factory
+    MediatorInstance --> Factory
     Factory --> Single
     Factory --> Multi
     Single --> Container
@@ -555,6 +593,35 @@ The generator scans for classes implementing:
 - Must not have `[ExcludeFromMediator]` attribute
 - Must implement one of the handler interfaces
 
+### Generated Attributes
+
+The source generator creates three attributes for handler customization:
+
+**`[ExcludeFromMediator]`** - Excludes a handler from automatic registration:
+```csharp
+[ExcludeFromMediator]
+public class DraftHandler : CommandHandler<MyCommand> { /* Not registered */ }
+```
+
+**`[MediatorHandler]`** - Customizes handler registration lifetime:
+```csharp
+[MediatorHandler(Lifetime = 0)]  // Singleton
+public class CachedQueryHandler : ILookupQuery<List<Country>> { ... }
+
+// Lifetime values:
+// 0 = Singleton (one instance for application lifetime)
+// 1 = Scoped (one instance per scope/request) [default]
+// 2 = Transient (new instance every time)
+```
+
+**`[MediatorDraft]`** - Marks messages/handlers as work-in-progress:
+```csharp
+[MediatorDraft(Reason = "API not finalized")]
+public record ExperimentalCommand : ICommand;
+```
+
+When a draft message is used, the analyzer emits `ASYNCMED006` (Info severity) to remind developers the API may change.
+
 ### Incremental Generation
 
 The generator uses Roslyn's incremental generator API for efficient builds:
@@ -603,14 +670,48 @@ public sealed class AsyncMediatorBuilder(IServiceCollection services)
     public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Scoped;
     internal bool HasBehaviors { get; private set; }
 
+    /// <summary>
+    /// Adds a closed generic pipeline behavior (e.g., LoggingBehavior for specific TRequest).
+    /// </summary>
     public AsyncMediatorBuilder AddBehavior<TBehavior>(ServiceLifetime lifetime = ServiceLifetime.Transient)
         where TBehavior : class
     {
-        services.Add(new ServiceDescriptor(typeof(TBehavior), typeof(TBehavior), lifetime));
+        // Registers against each closed IPipelineBehavior<TRequest, TResponse> interface
+        foreach (var iface in typeof(TBehavior).GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IPipelineBehavior<,>))
+                services.Add(new ServiceDescriptor(iface, typeof(TBehavior), lifetime));
+        }
+        HasBehaviors = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an open generic pipeline behavior (e.g., LoggingBehavior&lt;,&gt; for all requests).
+    /// This is the recommended approach for cross-cutting concerns.
+    /// </summary>
+    public AsyncMediatorBuilder AddOpenGenericBehavior(
+        Type openGenericBehaviorType,
+        ServiceLifetime lifetime = ServiceLifetime.Transient)
+    {
+        services.Add(new ServiceDescriptor(
+            typeof(IPipelineBehavior<,>), openGenericBehaviorType, lifetime));
         HasBehaviors = true;
         return this;
     }
 }
+```
+
+**Usage:**
+```csharp
+// Open generic behaviors (recommended for cross-cutting concerns)
+builder.Services.AddAsyncMediator(cfg => cfg
+    .AddOpenGenericBehavior(typeof(LoggingBehavior<,>))
+    .AddOpenGenericBehavior(typeof(ValidationBehavior<,>)));
+
+// Closed generic behaviors (for specific request types)
+builder.Services.AddAsyncMediator(cfg => cfg
+    .AddBehavior<SpecificCommandBehavior>());
 ```
 
 **Key design decision**: The `BehaviorFactory` is created from the `IServiceProvider` at runtime, not during registration. This avoids the anti-pattern of calling `BuildServiceProvider()` during configuration.
@@ -674,7 +775,7 @@ Based on BenchmarkDotNet v0.14.0 (.NET 10.0, AMD Ryzen Threadripper 3960X):
 |-----------|-------------|-------|
 | `Send<TCommand>` (success) | ~488 B | Handler + context + result |
 | `Send<TCommand>` (validation error) | ~632 B | Adds mutable `List<ValidationResult>` |
-| `DeferEvent<TEvent>` | 0 B | Tuple stored in concurrent queue |
+| `DeferEvent<TEvent>` | ~32 B | Tuple + queue node allocation |
 | `ExecuteDeferredEvents` | 0 B* | *After publish delegates cached |
 | `Query<TCriteria, TResult>` | ~248-776 B | Depends on criteria complexity |
 | `ValidationContext` creation | 32 B | Minimal overhead |
@@ -834,14 +935,24 @@ public interface IPipelineBehavior<in TRequest, TResponse>
 
 ### Registration
 
+**Recommended: Using the source generator (open generic behaviors):**
 ```csharp
+// Behaviors apply to ALL commands/queries
+builder.Services.AddAsyncMediator(cfg => cfg
+    .AddOpenGenericBehavior(typeof(LoggingBehavior<,>))
+    .AddOpenGenericBehavior(typeof(ValidationBehavior<,>)));
+```
+
+**Alternative: Manual registration with BehaviorFactory:**
+```csharp
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+
 services.AddScoped<IMediator>(sp => new Mediator(
-    type => sp.GetServices(type),
-    type => sp.GetRequiredService(type),
-    behaviors: [
-        new LoggingBehavior<CreateOrderCommand, ICommandWorkflowResult>(),
-        new ValidationBehavior<CreateOrderCommand, ICommandWorkflowResult>()
-    ]));
+    multiInstanceFactory: type => sp.GetServices(type),
+    singleInstanceFactory: type => sp.GetRequiredService(type),
+    behaviors: null,  // Not using explicit behaviors
+    behaviorFactory: type => sp.GetServices(type)));  // Resolves from DI
 ```
 
 ### Execution Flow
