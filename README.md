@@ -229,5 +229,6 @@ Found a bug or have a feature request? [Open an issue](https://github.com/jpv001
 
 ## License
 
-[MIT](License.md)
+[Apache License 2.0](License.md)
+
 
