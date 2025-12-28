@@ -130,7 +130,9 @@ sequenceDiagram
         Mediator->>EventQueue: Enqueue(type, event)
 
         alt UseTransactionScope = true
-            Handler->>Handler: TransactionScope wrapper
+            Handler->>Handler: TransactionScope begin
+            Handler->>Handler: transaction.Complete()
+            Handler->>Handler: TransactionScope dispose (commit)
         end
 
         Handler->>Mediator: ExecuteDeferredEvents()
@@ -143,10 +145,6 @@ sequenceDiagram
             loop For each handler
                 Mediator->>EventHandler: Handle(event)
             end
-        end
-
-        alt UseTransactionScope = true
-            Handler->>Handler: transaction.Complete()
         end
 
         Handler-->>Mediator: CommandWorkflowResult.Ok()
@@ -234,24 +232,26 @@ public abstract class CommandHandler<TCommand>(IMediator mediator) : ICommandHan
 {
     protected TCommand Command { get; private set; } = default!;
     protected IMediator Mediator { get; } = mediator;
+    protected CancellationToken CancellationToken { get; private set; }
     protected virtual bool UseTransactionScope => false;
 
-    public async Task<ICommandWorkflowResult> Handle(TCommand command)
+    public async Task<ICommandWorkflowResult> Handle(TCommand command, CancellationToken cancellationToken = default)
     {
         Command = command;
+        CancellationToken = cancellationToken;
         var context = new ValidationContext();
 
-        await Validate(context).ConfigureAwait(false);
+        await Validate(context, cancellationToken).ConfigureAwait(false);
         if (context.ValidationResults.Count > 0)
             return new CommandWorkflowResult(context.ValidationResults);
 
         return UseTransactionScope
-            ? await HandleWithTransaction(context).ConfigureAwait(false)
-            : await HandleWithoutTransaction(context).ConfigureAwait(false);
+            ? await HandleWithTransaction(context, cancellationToken).ConfigureAwait(false)
+            : await HandleWithoutTransaction(context, cancellationToken).ConfigureAwait(false);
     }
 
-    protected abstract Task Validate(ValidationContext validationContext);
-    protected abstract Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext);
+    protected abstract Task Validate(ValidationContext validationContext, CancellationToken cancellationToken);
+    protected abstract Task<ICommandWorkflowResult> DoHandle(ValidationContext validationContext, CancellationToken cancellationToken);
 }
 ```
 
@@ -286,12 +286,15 @@ public class CreateOrderHandler(IMediator mediator) : CommandHandler<CreateOrder
 {
     protected override bool UseTransactionScope => true; // Multi-DB operation
 
-    protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext context)
+    protected override Task Validate(ValidationContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+    protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
     {
         // Insert into Orders table
         // Insert into OrderItems table
         // Defer OrderCreated event
         // All-or-nothing: transaction will rollback if any step fails
+        return CommandWorkflowResult.Ok();
     }
 }
 ```
@@ -339,6 +342,29 @@ sequenceDiagram
     end
 ```
 
+### Safe-by-Default Behavior
+
+AsyncMediator is designed to make correct usage easy ("pit of success"):
+
+**Event execution only on success:**
+- Deferred events execute only when `DoHandle` returns a successful result (`result.Success == true`)
+- If `DoHandle` returns a failure result (via `CommandWorkflowResult.ValidationResults`), events are not executed
+- Validation errors in `ValidationContext` short-circuit before `DoHandle` is called
+
+**TransactionScope safety:**
+- When `UseTransactionScope` is enabled, event handlers run *after* `transaction.Complete()` succeeds
+- This ensures external side effects (HTTP calls, emails) only occur after the transaction commits
+- For event handlers that must participate in the transaction (e.g., writing to an event store), consider using an outbox pattern
+
+**Automatic queue cleanup:**
+- If a command throws an exception, the deferred event queue is automatically cleared
+- This prevents events from one failed command leaking into subsequent commands
+- Use `ClearDeferredEvents()` for manual control when needed
+
+**Zero-allocation nuance:**
+- "Zero allocation" for event deferral is achieved after the queue's internal segments are warmed and the delegate cache is populated
+- First-time event types incur a one-time reflection and expression compilation cost (~150μs)
+
 ## Empty List Singleton Pattern
 
 `CommandWorkflowResult` uses a singleton empty list to eliminate allocations for the success case.
@@ -384,11 +410,11 @@ AsyncMediator supports two query patterns:
 ```csharp
 public interface IQuery<in TCriteria, TResult>
 {
-    Task<TResult> Query(TCriteria criteria);
+    Task<TResult> Query(TCriteria criteria, CancellationToken cancellationToken = default);
 }
 
 // Usage
-var orders = await mediator.Query<OrderSearchCriteria, List<Order>>(criteria);
+var orders = await mediator.Query<OrderSearchCriteria, List<Order>>(criteria, ct);
 ```
 
 ### 2. Lookup Query (No Parameters)
@@ -396,11 +422,11 @@ var orders = await mediator.Query<OrderSearchCriteria, List<Order>>(criteria);
 ```csharp
 public interface ILookupQuery<TResult>
 {
-    Task<TResult> Query();
+    Task<TResult> Query(CancellationToken cancellationToken = default);
 }
 
 // Usage
-var countries = await mediator.LoadList<List<Country>>();
+var countries = await mediator.LoadList<List<Country>>(ct);
 ```
 
 **Why two patterns:**
@@ -470,28 +496,211 @@ container.Register(Component.For<IMediator>()
 );
 ```
 
+## Source Generator Architecture
+
+The `AsyncMediator.SourceGenerator` package provides compile-time handler discovery, eliminating the need for manual DI registration.
+
+### Design Goals
+
+1. **Zero-config**: Handlers are discovered automatically by implementing marker interfaces
+2. **Compile-time validation**: Missing or duplicate handlers are detected at build time
+3. **No reflection at runtime**: All handler types are known at compile time
+4. **Incremental generation**: Only regenerates when handler code changes
+
+### How It Works
+
+```mermaid
+graph TB
+    subgraph "Build Time"
+        Source[Source Code] --> Roslyn[Roslyn Compiler]
+        Roslyn --> SG[HandlerDiscoveryGenerator]
+        SG --> Analysis[Interface Analysis]
+
+        Analysis --> Discovery[Handler Discovery]
+        Discovery --> Attributes[AsyncMediatorAttributes.g.cs]
+        Discovery --> Registration[AsyncMediatorRegistration.g.cs]
+        Discovery --> Extensions[AsyncMediatorExtensions.g.cs]
+        Discovery --> Builder[AsyncMediatorBuilder.g.cs]
+
+        Roslyn --> Analyzer[AsyncMediatorAnalyzer]
+        Analyzer --> Diagnostics[Compile-Time Diagnostics]
+    end
+
+    subgraph "Runtime"
+        Registration --> AddAsyncMediator[AddAsyncMediator Method]
+        Builder --> Config[Configuration]
+        AddAsyncMediator --> DI[DI Container]
+    end
+```
+
+### Generated Files
+
+| File | Purpose |
+|------|---------|
+| `AsyncMediatorAttributes.g.cs` | Attributes for handler customization |
+| `AsyncMediatorRegistration.g.cs` | Handler service descriptors |
+| `AsyncMediatorExtensions.g.cs` | `AddAsyncMediator()` extension method |
+| `AsyncMediatorBuilder.g.cs` | Fluent builder for configuration |
+
+### Handler Discovery
+
+The generator scans for classes implementing:
+- `ICommandHandler<TCommand>`
+- `IEventHandler<TEvent>`
+- `IQuery<TCriteria, TResult>`
+- `ILookupQuery<TResult>`
+
+**Discovery criteria:**
+- Must be non-abstract class
+- Must not have `[ExcludeFromMediator]` attribute
+- Must implement one of the handler interfaces
+
+### Incremental Generation
+
+The generator uses Roslyn's incremental generator API for efficient builds:
+
+```csharp
+public void Initialize(IncrementalGeneratorInitializationContext context)
+{
+    var handlerCandidates = context.SyntaxProvider
+        .CreateSyntaxProvider(
+            predicate: static (node, _) => IsPotentialHandler(node),
+            transform: static (ctx, _) => GetHandlerInfo(ctx))
+        .Where(static h => h.HasValue)
+        .Select(static (h, _) => h!.Value);
+
+    context.RegisterSourceOutput(handlerCandidates.Collect(), GenerateRegistrationCode);
+}
+```
+
+**Performance benefits:**
+- Only analyzes classes with base lists (potential handlers)
+- Caches handler metadata between builds
+- Only regenerates when handler signatures change
+
+### Analyzer Diagnostics
+
+The `AsyncMediatorAnalyzer` provides compile-time diagnostics:
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| ASYNCMED001 | Error | Command used via `Send()` but no handler registered |
+| ASYNCMED002 | Error | Multiple handlers for the same command type |
+| ASYNCMED003 | Warning | Query used via `Query()` but no handler registered |
+| ASYNCMED004 | Warning | Event used via `Publish()` but no handler registered |
+| ASYNCMED006 | Info | Message type marked with `[MediatorDraft]` |
+| ASYNCMED007 | Warning | Multiple handlers for the same query signature |
+
+### Generated Builder Pattern
+
+The builder enables fluent configuration without service locator anti-patterns:
+
+```csharp
+// Generated code (simplified)
+public sealed class AsyncMediatorBuilder(IServiceCollection services)
+{
+    public ServiceLifetime DefaultLifetime { get; set; } = ServiceLifetime.Scoped;
+    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Scoped;
+    internal bool HasBehaviors { get; private set; }
+
+    public AsyncMediatorBuilder AddBehavior<TBehavior>(ServiceLifetime lifetime = ServiceLifetime.Transient)
+        where TBehavior : class
+    {
+        services.Add(new ServiceDescriptor(typeof(TBehavior), typeof(TBehavior), lifetime));
+        HasBehaviors = true;
+        return this;
+    }
+}
+```
+
+**Key design decision**: The `BehaviorFactory` is created from the `IServiceProvider` at runtime, not during registration. This avoids the anti-pattern of calling `BuildServiceProvider()` during configuration.
+
+### Extension Method Generation
+
+```csharp
+// Generated code (simplified)
+public static IServiceCollection AddAsyncMediator(
+    this IServiceCollection services,
+    Action<AsyncMediatorBuilder>? configure = null)
+{
+    var builder = new AsyncMediatorBuilder(services);
+    configure?.Invoke(builder);
+
+    AddGeneratedHandlers(services, builder.DefaultLifetime);
+
+    services.Add(new ServiceDescriptor(
+        typeof(IMediator),
+        sp => new Mediator(
+            multiInstanceFactory: type => (IEnumerable<object>)sp.GetServices(type),
+            singleInstanceFactory: type => sp.GetRequiredService(type),
+            behaviors: null,
+            behaviorFactory: builder.HasBehaviors
+                ? type => (IEnumerable<object>)sp.GetServices(type)
+                : null),
+        builder.MediatorLifetime));
+
+    return services;
+}
+```
+
+**Why `HasBehaviors` check**: When no behaviors are registered, passing `null` for `behaviorFactory` enables the fast-path in the Mediator that skips behavior resolution entirely.
+
+### Testing the Source Generator
+
+Source generators require specialized testing:
+
+```csharp
+[TestMethod]
+public void Generate_WithCommandHandler_RegistersCorrectly()
+{
+    var source = @"
+        public class TestCommand : ICommand { }
+        public class TestHandler : ICommandHandler<TestCommand> { ... }";
+
+    var (generatedSources, diagnostics) = RunGenerator(source);
+
+    Assert.IsTrue(generatedSources.Any(s => s.Contains("TestHandler")));
+    Assert.IsTrue(generatedSources.Any(s => s.Contains("CommandHandlerCount = 1")));
+}
+```
+
 ## Performance Characteristics
+
+Based on BenchmarkDotNet v0.14.0 (.NET 10.0, AMD Ryzen Threadripper 3960X):
 
 ### Memory Allocations
 
 | Operation | Allocations | Notes |
 |-----------|-------------|-------|
-| `Send<TCommand>` (success) | ~400 bytes | Handler + context + empty list singleton |
-| `Send<TCommand>` (validation error) | ~800 bytes | Adds `List<ValidationResult>` |
-| `DeferEvent<TEvent>` | 16 bytes | Tuple on concurrent queue |
-| `ExecuteDeferredEvents` | 0 bytes* | *After publish delegates cached |
-| `Query<TCriteria, TResult>` | ~200 bytes | Handler resolution only |
+| `Send<TCommand>` (success) | ~488 B | Handler + context + result |
+| `Send<TCommand>` (validation error) | ~632 B | Adds mutable `List<ValidationResult>` |
+| `DeferEvent<TEvent>` | 0 B | Tuple stored in concurrent queue |
+| `ExecuteDeferredEvents` | 0 B* | *After publish delegates cached |
+| `Query<TCriteria, TResult>` | ~248-776 B | Depends on criteria complexity |
+| `ValidationContext` creation | 32 B | Minimal overhead |
+| `CommandWorkflowResult.Ok()` | 0 B | Uses singleton empty list |
 
-### Throughput
+### Latency
 
-Based on BenchmarkDotNet results:
+| Scenario | Mean | Notes |
+|----------|------|-------|
+| Send (single command) | 163 ns | Baseline operation |
+| Send (10 concurrent) | 1.6 μs | Linear scaling |
+| Query (complex criteria) | 105 ns | Includes handler resolution |
+| LoadList (no criteria) | 82 ns | Fastest query path |
+| DeferEvent (single) | 575 ns | Zero allocation |
+| DeferEvent (1000 bulk) | 41 μs | ~41 ns per event |
 
-| Scenario | Operations/sec | Mean Time |
-|----------|----------------|-----------|
-| Command (no events) | ~500,000 | 2 μs |
-| Command (with 3 deferred events) | ~200,000 | 5 μs |
-| Query | ~800,000 | 1.2 μs |
-| Event deferral (1000 events) | ~2,000,000 | 500 ns |
+### Pipeline Behavior Overhead
+
+| Configuration | Mean | Memory | Overhead |
+|--------------|------|--------|----------|
+| No behaviors | 185 ns | 416 B | Baseline |
+| Empty behaviors `[]` | 173 ns | 416 B | **0%** |
+| 1 behavior | 265 ns | 688 B | +43% |
+| 3 behaviors | 276 ns | 896 B | +49% |
+
+The empty behaviors array has **identical** performance to not passing behaviors at all.
 
 ### Scalability Characteristics
 
@@ -585,13 +794,16 @@ public class LoggingMediator(MultiInstanceFactory multi, SingleInstanceFactory s
 public abstract class FluentValidationCommandHandler<TCommand>(IMediator mediator, IValidator<TCommand> validator)
     : CommandHandler<TCommand>(mediator)
 {
-    protected override async Task Validate(ValidationContext context)
+    protected override async Task Validate(ValidationContext context, CancellationToken cancellationToken)
     {
-        var result = await validator.ValidateAsync(Command);
+        var result = await validator.ValidateAsync(Command, cancellationToken);
         if (!result.IsValid)
             context.AddErrors(result.Errors.Select(e =>
                 new ValidationResult(e.ErrorMessage, new[] { e.PropertyName })));
     }
+
+    protected override Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct) =>
+        Task.FromResult<ICommandWorkflowResult>(CommandWorkflowResult.Ok());
 }
 ```
 
@@ -752,9 +964,9 @@ The empty behaviors array has **identical** performance to not passing behaviors
 | TransactionScope | Opt-in | N/A |
 | Validation base class | Included | Separate library |
 | Memory allocations | Minimal | Higher |
-| Dependencies | Zero | Microsoft.Extensions.DI |
+| Runtime dependencies | Zero | Microsoft.Extensions.DI |
 
-AsyncMediator now provides pipeline behaviors with a zero-cost opt-in design: when no behaviors are registered, performance is identical to having no pipeline support at all. Choose MediatR for a mature ecosystem with extensive community behaviors. Choose AsyncMediator if you want zero dependencies, maximum performance, and built-in event deferral.
+AsyncMediator now provides pipeline behaviors with a zero-cost opt-in design: when no behaviors are registered, performance is identical to having no pipeline support at all. Choose MediatR for a mature ecosystem with extensive community behaviors. Choose AsyncMediator if you want zero runtime dependencies, maximum performance, and built-in event deferral.
 
 ## Concurrency Model
 

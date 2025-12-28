@@ -35,6 +35,13 @@ public interface IMediator
     Task ExecuteDeferredEvents(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Clears all deferred events from the queue without executing them.
+    /// This is called automatically when <see cref="Send{TCommand}"/> throws an exception.
+    /// Use this method to manually discard events in failure scenarios.
+    /// </summary>
+    void ClearDeferredEvents();
+
+    /// <summary>
     /// This is used to load data that does not require criteria for its query.
     /// </summary>
     /// <typeparam name="TResult">The generic type of result required.</typeparam>

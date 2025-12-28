@@ -208,18 +208,18 @@ If you encounter issues during migration:
 
 ## Changelog
 
-### v3.0.0 (Breaking Changes)
+### v3.0.0
 
 - **BREAKING:** Requires .NET 9 or .NET 10
-- **BREAKING:** CancellationToken parameter added to all async interfaces (see section 5 below)
+- **BREAKING:** CancellationToken parameter added to all async interfaces (see section 5)
 - **BREAKING:** Removed `HandlerOrderAttribute` and `OrderByExecutionOrder()`
-- **BREAKING:** Event execution changed from `ConcurrentBag` to `ConcurrentQueue` (FIFO)
-- **BREAKING:** `TransactionScope` is now opt-in (see section 4 below)
-- **BREAKING:** `ICommandWorkflowResult.ValidationResults` changed from `IList<T>` to `List<T>`
+- **BREAKING:** Event execution uses `ConcurrentQueue` (FIFO ordering)
+- **BREAKING:** `TransactionScope` is opt-in (see section 4)
+- **BREAKING:** `ICommandWorkflowResult.ValidationResults` is `List<T>` (was `IList<T>`)
 - Added nullable reference type annotations
-- 87% performance improvement in command handling
-- 89% improvement in concurrent scenarios
-- Modernized codebase with C# 13 features
+- Added pipeline behaviors with zero-cost opt-in design
+- Added source generator for automatic handler discovery
+- Modern C# 13 patterns throughout
 
 ---
 

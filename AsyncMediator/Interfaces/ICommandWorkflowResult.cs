@@ -20,10 +20,10 @@ public interface ICommandWorkflowResult
     /// <summary>
     /// Gets the typed result, or null if validation failed.
     /// </summary>
-    TResult? Result<TResult>() where TResult : class, new();
+    TResult? Result<TResult>() where TResult : class;
 
     /// <summary>
     /// Sets the command result.
     /// </summary>
-    void SetResult<TResult>(TResult result) where TResult : class, new();
+    void SetResult<TResult>(TResult result) where TResult : class;
 }
