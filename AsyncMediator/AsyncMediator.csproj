@@ -10,7 +10,7 @@
 
     <!-- Package Metadata -->
     <PackageId>AsyncMediator</PackageId>
-    <Version>3.1.1</Version>
+    <Version>3.1.2</Version>
     <Authors>AsyncMediator Contributors</Authors>
     <Description>A lightweight, high-performance mediator pattern implementation for .NET 9+. Supports commands, queries, and domain events with built-in event deferral, validation, pipeline behaviors, and optional transaction scope support. Zero external dependencies.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

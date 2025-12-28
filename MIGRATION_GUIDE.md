@@ -1,6 +1,6 @@
-# AsyncMediator v3.0.0 Migration Guide
+# AsyncMediator v3.x Migration Guide
 
-This guide helps you migrate from AsyncMediator v2.x (.NET Standard 2.0) to v3.0.0 (.NET 10).
+This guide helps you migrate from AsyncMediator v2.x (.NET Standard 2.0) to v3.x (.NET 9/10).
 
 ## Breaking Changes
 
@@ -150,7 +150,8 @@ Remove all usages and implement DI registration order or event chaining instead.
 ### Step 3: Update NuGet Package
 
 ```bash
-dotnet add package AsyncMediator --version 3.0.0
+dotnet add package AsyncMediator
+dotnet add package AsyncMediator.SourceGenerator  # Recommended
 ```
 
 ### Step 4: Handle Nullable Warnings
@@ -208,18 +209,21 @@ If you encounter issues during migration:
 
 ## Changelog
 
-### v3.0.0
+### v3.x (Current)
 
-- **BREAKING:** Requires .NET 9 or .NET 10
-- **BREAKING:** CancellationToken parameter added to all async interfaces (see section 5)
-- **BREAKING:** Removed `HandlerOrderAttribute` and `OrderByExecutionOrder()`
-- **BREAKING:** Event execution uses `ConcurrentQueue` (FIFO ordering)
-- **BREAKING:** `TransactionScope` is opt-in (see section 4)
-- **BREAKING:** `ICommandWorkflowResult.ValidationResults` is `List<T>` (was `IList<T>`)
-- Added nullable reference type annotations
-- Added pipeline behaviors with zero-cost opt-in design
-- Added source generator for automatic handler discovery
-- Modern C# 13 patterns throughout
+**Breaking changes from v2.x:**
+- Requires .NET 9 or .NET 10
+- CancellationToken parameter added to all async interfaces (see section 5)
+- Removed `HandlerOrderAttribute` and `OrderByExecutionOrder()`
+- Event execution uses `ConcurrentQueue` (FIFO ordering)
+- `TransactionScope` is opt-in (see section 4)
+- `ICommandWorkflowResult.ValidationResults` is `List<T>` (was `IList<T>`)
+
+**New features:**
+- Source generator for automatic handler discovery (`AddAsyncMediator()`)
+- Pipeline behaviors with zero-cost opt-in design
+- Nullable reference type annotations
+- Modern C# patterns throughout
 
 ---
 
