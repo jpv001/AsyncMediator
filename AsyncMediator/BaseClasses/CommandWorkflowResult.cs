@@ -12,11 +12,12 @@ namespace AsyncMediator;
 public class CommandWorkflowResult : ICommandWorkflowResult
 {
     private static readonly List<ValidationResult> EmptyValidationResults = [];
+    private List<ValidationResult> _validationResults = EmptyValidationResults;
 
     /// <summary>
     /// Initializes a new successful command result with no validation errors.
     /// </summary>
-    public CommandWorkflowResult() => ValidationResults = EmptyValidationResults;
+    public CommandWorkflowResult() { }
 
     /// <summary>
     /// Initializes a new command result with a single error message.
@@ -37,19 +38,28 @@ public class CommandWorkflowResult : ICommandWorkflowResult
     /// </summary>
     /// <param name="validationResults">The validation results containing errors.</param>
     public CommandWorkflowResult(IEnumerable<ValidationResult> validationResults) =>
-        ValidationResults = validationResults is List<ValidationResult> list
+        _validationResults = validationResults is List<ValidationResult> list
             ? list
             : validationResults.ToList();
 
     /// <summary>
     /// Gets the list of validation errors. Empty list indicates success.
+    /// Prefer using <see cref="AddError(string)"/> methods over direct list mutation.
     /// </summary>
-    public List<ValidationResult> ValidationResults { get; protected set; }
+    public List<ValidationResult> ValidationResults
+    {
+        get
+        {
+            EnsureMutableList();
+            return _validationResults;
+        }
+        protected set => _validationResults = value;
+    }
 
     /// <summary>
     /// Gets a value indicating whether the command succeeded (no validation errors).
     /// </summary>
-    public bool Success => ValidationResults.Count == 0;
+    public bool Success => _validationResults.Count == 0;
 
     /// <summary>
     /// Gets the optional result object.
@@ -61,14 +71,14 @@ public class CommandWorkflowResult : ICommandWorkflowResult
     /// </summary>
     /// <typeparam name="TResult">The expected result type.</typeparam>
     /// <returns>The result cast to the specified type, or null.</returns>
-    public TResult? Result<TResult>() where TResult : class, new() => ObjectResult as TResult;
+    public TResult? Result<TResult>() where TResult : class => ObjectResult as TResult;
 
     /// <summary>
     /// Sets the result value.
     /// </summary>
     /// <typeparam name="TResult">The result type.</typeparam>
     /// <param name="result">The result value.</param>
-    public void SetResult<TResult>(TResult result) where TResult : class, new() => ObjectResult = result;
+    public void SetResult<TResult>(TResult result) where TResult : class => ObjectResult = result;
 
     /// <summary>
     /// Creates a successful command result with no errors.
@@ -125,47 +135,12 @@ public class CommandWorkflowResult : ICommandWorkflowResult
     }
 
     /// <inheritdoc />
-    public override bool Equals(object? obj) =>
-        obj is CommandWorkflowResult other && Equals(other);
-
-    /// <summary>
-    /// Determines whether the specified result is equal to this result.
-    /// </summary>
-    /// <param name="other">The result to compare.</param>
-    /// <returns>True if the results have the same validation errors.</returns>
-    protected bool Equals(CommandWorkflowResult other)
-    {
-        if (ValidationResults.Count != other.ValidationResults.Count)
-            return false;
-
-        for (var i = 0; i < ValidationResults.Count; i++)
-        {
-            var thisResult = ValidationResults[i];
-            var otherResult = other.ValidationResults[i];
-
-            if (thisResult.ErrorMessage != otherResult.ErrorMessage)
-                return false;
-        }
-
-        return true;
-    }
-
-    /// <inheritdoc />
-    public override int GetHashCode()
-    {
-        var hash = new HashCode();
-        foreach (var result in ValidationResults)
-            hash.Add(result.ErrorMessage);
-        return hash.ToHashCode();
-    }
-
-    /// <inheritdoc />
     public override string ToString() =>
         string.Join(Environment.NewLine, ValidationResults.Select(vr => vr.ErrorMessage));
 
     private void EnsureMutableList()
     {
-        if (ReferenceEquals(ValidationResults, EmptyValidationResults))
-            ValidationResults = [];
+        if (ReferenceEquals(_validationResults, EmptyValidationResults))
+            _validationResults = [];
     }
 }

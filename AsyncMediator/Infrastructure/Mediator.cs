@@ -30,14 +30,29 @@ public class Mediator(
     public async Task<ICommandWorkflowResult> Send<TCommand>(TCommand command, CancellationToken cancellationToken = default)
         where TCommand : ICommand
     {
-        // Fast path: no behaviors registered
-        if (_pipeline.IsEmpty)
-            return await GetCommandHandler<TCommand>().Handle(command, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Fast path: no behaviors registered
+            if (_pipeline.IsEmpty)
+                return await GetCommandHandler<TCommand>().Handle(command, cancellationToken).ConfigureAwait(false);
 
-        return await _pipeline.Execute<TCommand, ICommandWorkflowResult>(
-            command,
-            () => GetCommandHandler<TCommand>().Handle(command, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+            return await _pipeline.Execute<TCommand, ICommandWorkflowResult>(
+                command,
+                () => GetCommandHandler<TCommand>().Handle(command, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Clear deferred events on exception to prevent leaking events to subsequent commands
+            ClearDeferredEvents();
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void ClearDeferredEvents()
+    {
+        while (_deferredEvents.TryDequeue(out _)) { }
     }
 
     /// <inheritdoc />

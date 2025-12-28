@@ -55,17 +55,25 @@ public abstract class CommandHandler<TCommand>(IMediator mediator) : ICommandHan
 
     private async Task<ICommandWorkflowResult> HandleWithTransaction(ValidationContext context, CancellationToken cancellationToken)
     {
-        using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+        ICommandWorkflowResult finalResult;
 
-        cancellationToken.ThrowIfCancellationRequested();
-        var workflowResult = await DoHandle(context, cancellationToken).ConfigureAwait(false);
-        if (context.ValidationResults.Count > 0)
-            return new CommandWorkflowResult(context.ValidationResults);
+        using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var workflowResult = await DoHandle(context, cancellationToken).ConfigureAwait(false);
+            if (context.ValidationResults.Count > 0)
+                return new CommandWorkflowResult(context.ValidationResults);
 
+            finalResult = workflowResult ?? CommandWorkflowResult.Ok();
+            if (!finalResult.Success)
+                return finalResult;
+
+            transaction.Complete();
+        }
+
+        // Execute events AFTER transaction commits successfully
         await Mediator.ExecuteDeferredEvents(cancellationToken).ConfigureAwait(false);
-        transaction.Complete();
-
-        return workflowResult ?? CommandWorkflowResult.Ok();
+        return finalResult;
     }
 
     private async Task<ICommandWorkflowResult> HandleWithoutTransaction(ValidationContext context, CancellationToken cancellationToken)
@@ -75,9 +83,12 @@ public abstract class CommandHandler<TCommand>(IMediator mediator) : ICommandHan
         if (context.ValidationResults.Count > 0)
             return new CommandWorkflowResult(context.ValidationResults);
 
-        await Mediator.ExecuteDeferredEvents(cancellationToken).ConfigureAwait(false);
+        var finalResult = workflowResult ?? CommandWorkflowResult.Ok();
+        if (!finalResult.Success)
+            return finalResult;
 
-        return workflowResult ?? CommandWorkflowResult.Ok();
+        await Mediator.ExecuteDeferredEvents(cancellationToken).ConfigureAwait(false);
+        return finalResult;
     }
 
     /// <summary>

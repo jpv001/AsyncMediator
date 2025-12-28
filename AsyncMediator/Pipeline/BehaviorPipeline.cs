@@ -24,9 +24,9 @@ internal sealed class BehaviorPipeline
     /// </summary>
     public static readonly BehaviorPipeline Empty = new([], null);
 
-    private readonly FrozenDictionary<Type, object[]> _explicitBehaviors;
+    private readonly FrozenDictionary<(Type Request, Type Response), object[]> _explicitBehaviors;
     private readonly BehaviorFactory? _behaviorFactory;
-    private readonly ConcurrentDictionary<Type, object[]> _resolvedBehaviors = new();
+    private readonly ConcurrentDictionary<(Type Request, Type Response), object[]> _resolvedBehaviors = new();
 
     /// <summary>
     /// Gets whether this pipeline has no behaviors registered and no factory.
@@ -46,7 +46,7 @@ internal sealed class BehaviorPipeline
         IsEmpty = behaviorList.Count == 0 && behaviorFactory is null;
 
         _explicitBehaviors = behaviorList.Count == 0
-            ? FrozenDictionary<Type, object[]>.Empty
+            ? FrozenDictionary<(Type, Type), object[]>.Empty
             : BuildBehaviorMap(behaviorList);
     }
 
@@ -70,20 +70,20 @@ internal sealed class BehaviorPipeline
     }
 
     /// <summary>
-    /// Gets behaviors for the request type, combining explicit and factory-resolved behaviors.
-    /// Results are cached per request type for optimal performance.
+    /// Gets behaviors for the request and response types, combining explicit and factory-resolved behaviors.
+    /// Results are cached per request/response pair for optimal performance.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private object[] GetBehaviorsForRequest<TRequest, TResponse>()
     {
         // Fast path: no factory, use explicit behaviors only
         if (_behaviorFactory is null)
-            return _explicitBehaviors.TryGetValue(typeof(TRequest), out var b) ? b : [];
+            return _explicitBehaviors.TryGetValue((typeof(TRequest), typeof(TResponse)), out var b) ? b : [];
 
-        // Cache resolved behaviors per request type
-        return _resolvedBehaviors.GetOrAdd(typeof(TRequest), _ =>
+        // Cache resolved behaviors per request/response type pair
+        return _resolvedBehaviors.GetOrAdd((typeof(TRequest), typeof(TResponse)), _ =>
         {
-            var explicitList = _explicitBehaviors.TryGetValue(typeof(TRequest), out var e) ? e : [];
+            var explicitList = _explicitBehaviors.TryGetValue((typeof(TRequest), typeof(TResponse)), out var e) ? e : [];
             var factoryList = _behaviorFactory(typeof(IPipelineBehavior<TRequest, TResponse>)).ToArray();
 
             if (explicitList.Length == 0 && factoryList.Length == 0)
@@ -126,11 +126,11 @@ internal sealed class BehaviorPipeline
     }
 
     /// <summary>
-    /// Groups behaviors by their request type for efficient lookup.
+    /// Groups behaviors by their request and response types for efficient lookup.
     /// </summary>
-    private static FrozenDictionary<Type, object[]> BuildBehaviorMap(List<object> behaviors)
+    private static FrozenDictionary<(Type Request, Type Response), object[]> BuildBehaviorMap(List<object> behaviors)
     {
-        var map = new Dictionary<Type, List<object>>();
+        var map = new Dictionary<(Type Request, Type Response), List<object>>();
 
         foreach (var behavior in behaviors)
         {
@@ -146,13 +146,14 @@ internal sealed class BehaviorPipeline
                 if (genericDef != typeof(IPipelineBehavior<,>))
                     continue;
 
-                // Get the TRequest type (first generic argument)
-                var requestType = iface.GetGenericArguments()[0];
+                // Get both TRequest and TResponse types
+                var genericArgs = iface.GetGenericArguments();
+                var key = (Request: genericArgs[0], Response: genericArgs[1]);
 
-                if (!map.TryGetValue(requestType, out var list))
+                if (!map.TryGetValue(key, out var list))
                 {
                     list = [];
-                    map[requestType] = list;
+                    map[key] = list;
                 }
 
                 list.Add(behavior);
