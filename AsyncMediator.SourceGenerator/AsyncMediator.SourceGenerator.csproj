@@ -12,7 +12,7 @@
     <NoWarn>$(NoWarn);RS2008;RS1041</NoWarn>
 
     <PackageId>AsyncMediator.SourceGenerator</PackageId>
-    <Version>3.1.1</Version>
+    <Version>3.1.2</Version>
     <Authors>AsyncMediator Contributors</Authors>
     <Description>Source generator for AsyncMediator. Auto-discovers handlers at compile time. Requires .NET 9+ SDK.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -20,6 +20,7 @@
     <RepositoryUrl>https://github.com/preemajames/AsyncMediator</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>mediator;source-generator;cqrs;dependency-injection;aot</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <IncludeSymbols>false</IncludeSymbols>
     <IncludeBuildOutput>false</IncludeBuildOutput>
@@ -35,6 +36,7 @@
 
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

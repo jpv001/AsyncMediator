@@ -175,20 +175,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(opts =>
     opts.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
-// Pipeline behaviors (order matters: first registered = outermost)
-builder.Services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-builder.Services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-builder.Services.AddScoped(typeof(IPipelineBehavior<,>), typeof(UnitOfWorkBehavior<,>));
-
-// Mediator with behavior factory
-builder.Services.AddScoped<IMediator>(sp => new Mediator(
-    multiInstanceFactory: sp.GetServices,
-    singleInstanceFactory: sp.GetRequiredService,
-    behaviorFactory: sp.GetServices));
-
-// Handlers
-builder.Services.AddScoped<ICommandHandler<CreateOrderCommand>, CreateOrderHandler>();
-builder.Services.AddScoped<IEventHandler<OrderCreatedEvent>, OrderCreatedHandler>();
+// AsyncMediator with source generator (handlers auto-discovered)
+// Behaviors registered in order: first = outermost
+builder.Services.AddAsyncMediator(cfg => cfg
+    .AddOpenGenericBehavior(typeof(LoggingBehavior<,>))
+    .AddOpenGenericBehavior(typeof(ValidationBehavior<,>))
+    .AddOpenGenericBehavior(typeof(UnitOfWorkBehavior<,>)));
 
 var app = builder.Build();
 

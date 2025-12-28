@@ -1,50 +1,48 @@
 # AsyncMediator
 
-A lightweight, high-performance mediator for .NET 9/10. Zero runtime dependencies. Minimal allocations.
+[![NuGet](https://img.shields.io/nuget/v/AsyncMediator.svg)](https://www.nuget.org/packages/AsyncMediator)
+[![NuGet](https://img.shields.io/nuget/v/AsyncMediator.SourceGenerator.svg?label=SourceGenerator)](https://www.nuget.org/packages/AsyncMediator.SourceGenerator)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## What is a Mediator?
+A lightweight, high-performance mediator for .NET 9/10 with compile-time handler discovery.
 
-A mediator decouples the "what" from the "how" in your application. Instead of controllers calling services directly, they send messages through a mediator that routes them to the right handler.
+## Highlights
 
+- **Zero-config setup** - Source generator discovers handlers at compile time
+- **Zero runtime dependencies** - Core library has no external packages
+- **Safe event deferral** - Events only fire after successful command execution
+- **Pipeline behaviors** - Add logging, validation, caching without touching handlers
+- **Built-in validation** - `CommandHandler<T>` base class with `Validate()` + `DoHandle()` flow
+- **High performance** - ~163ns command dispatch, minimal allocations
+
+## Installation
+
+```bash
+dotnet add package AsyncMediator
+dotnet add package AsyncMediator.SourceGenerator
 ```
-Controller → Mediator → Handler → Database/Services
-```
 
-This indirection enables clean architecture, testability, and cross-cutting concerns (logging, validation, caching) without polluting your business logic.
-
-## When to Use AsyncMediator
-
-**Great for:**
-- CQRS architectures (separate read/write paths)
-- Domain-driven design with domain events
-- Decoupling handlers from HTTP/messaging infrastructure
-- Adding cross-cutting behaviors without modifying handlers
-- Applications where testability matters
-
-**Not a fit:**
-- Simple CRUD where direct repository access is clearer
-- Real-time event streaming (use a message bus)
-- Event sourcing (use specialized frameworks)
-
-## See It In Action
-
-**[samples/TodoApi/START_HERE.md](samples/TodoApi/START_HERE.md)** - A working .NET 10 demo with Redis showing commands, queries, events, and pipeline behaviors. Run it and see the flow in action.
+> **Recommended:** Always install both packages. The source generator eliminates manual handler registration and catches missing handlers at compile time.
 
 ## Quick Start
 
-### Install
-
-```
-dotnet add package AsyncMediator
-```
-
-### 1. Create a Command and Handler
+### 1. Register in Program.cs
 
 ```csharp
-// The command (what you want to do)
-public record CreateOrderCommand(Guid CustomerId, List<OrderItem> Items) : ICommand;
+builder.Services.AddAsyncMediator();
+```
 
-// The handler (how it's done)
+That's it. All handlers are discovered automatically.
+
+### 2. Create a Command
+
+```csharp
+public record CreateOrderCommand(Guid CustomerId, List<OrderItem> Items) : ICommand;
+```
+
+### 3. Create a Handler
+
+```csharp
 public class CreateOrderHandler(IMediator mediator, IOrderRepository repo)
     : CommandHandler<CreateOrderCommand>(mediator)
 {
@@ -58,78 +56,93 @@ public class CreateOrderHandler(IMediator mediator, IOrderRepository repo)
     protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
     {
         var order = await repo.Create(Command.CustomerId, Command.Items, ct);
+        Mediator.DeferEvent(new OrderCreatedEvent(order.Id));
         return CommandWorkflowResult.Ok();
     }
 }
 ```
 
-### 2. Wire Up DI
+### 4. Send Commands
 
 ```csharp
-services.AddScoped<IMediator>(sp => new Mediator(
-    type => sp.GetServices(type),
-    type => sp.GetRequiredService(type)));
-
-services.AddTransient<ICommandHandler<CreateOrderCommand>, CreateOrderHandler>();
+var result = await mediator.Send(new CreateOrderCommand(customerId, items), ct);
+if (result.Success)
+    // Order created, events fired
 ```
 
-### 3. Send Commands
+## Core Concepts
+
+### Commands
+
+Commands change state. Handlers return `ICommandWorkflowResult` with validation support.
 
 ```csharp
-public class OrderController(IMediator mediator) : ControllerBase
-{
-    [HttpPost]
-    public async Task<IActionResult> Create(CreateOrderCommand command, CancellationToken ct)
-    {
-        var result = await mediator.Send(command, ct);
-        return result.Success ? Ok() : BadRequest(result.ValidationResults);
-    }
-}
+public record CreateOrderCommand(Guid CustomerId) : ICommand;
 ```
 
-That's it. You're running.
+### Queries
 
-## Queries
-
-For read operations, use queries instead of commands:
+Queries read data without side effects.
 
 ```csharp
-public record OrderSearchCriteria(Guid? CustomerId);
-
+// With criteria
 public class OrderQuery(IOrderRepository repo) : IQuery<OrderSearchCriteria, List<Order>>
 {
     public Task<List<Order>> Query(OrderSearchCriteria c, CancellationToken ct) =>
         repo.Search(c.CustomerId, ct);
 }
 
-// Usage
 var orders = await mediator.Query<OrderSearchCriteria, List<Order>>(criteria, ct);
+
+// Without criteria
+public class AllOrdersQuery(IOrderRepository repo) : ILookupQuery<List<Order>>
+{
+    public Task<List<Order>> Query(CancellationToken ct) => repo.GetAll(ct);
+}
+
+var orders = await mediator.LoadList<List<Order>>(ct);
 ```
 
-## Events
+### Events
 
-Defer side effects until after your main operation completes:
+Events fire after successful command execution. They're automatically skipped if validation fails or an exception occurs.
 
 ```csharp
 public record OrderCreatedEvent(Guid OrderId) : IDomainEvent;
 
-// In your command handler
-protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
-{
-    var order = await repo.Create(Command.CustomerId, Command.Items, ct);
-    Mediator.DeferEvent(new OrderCreatedEvent(order.Id));  // Queued, not executed yet
-    return CommandWorkflowResult.Ok();
-}
+// Defer in handler
+Mediator.DeferEvent(new OrderCreatedEvent(order.Id));
 
-// Event handler (executed after DoHandle completes)
-public class SendConfirmationEmailHandler(IEmailService email) : IEventHandler<OrderCreatedEvent>
+// Handle elsewhere
+public class SendEmailHandler : IEventHandler<OrderCreatedEvent>
 {
     public Task Handle(OrderCreatedEvent e, CancellationToken ct) =>
-        email.SendOrderConfirmation(e.OrderId, ct);
+        emailService.SendConfirmation(e.OrderId, ct);
 }
 ```
 
-**Safe by default:** Deferred events only execute when `DoHandle` returns a successful result. If the command fails (validation errors or `result.Success == false`), events are automatically skipped. When `UseTransactionScope` is enabled, events execute *after* the transaction commits successfully.
+### Pipeline Behaviors
+
+Add cross-cutting concerns without modifying handlers:
+
+```csharp
+builder.Services.AddAsyncMediator(cfg => cfg
+    .AddOpenGenericBehavior(typeof(LoggingBehavior<,>))
+    .AddOpenGenericBehavior(typeof(ValidationBehavior<,>)));
+```
+
+```csharp
+public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+    {
+        Console.WriteLine($"Handling {typeof(TRequest).Name}");
+        var response = await next();
+        Console.WriteLine($"Handled {typeof(TRequest).Name}");
+        return response;
+    }
+}
+```
 
 ## Performance
 
@@ -139,174 +152,80 @@ public class SendConfirmationEmailHandler(IEmailService email) : IEventHandler<O
 | Query | ~105 ns | ~248 B |
 | Defer event | ~575 ns | 0 B |
 
-Pipeline behaviors add zero overhead when no `behaviorFactory` is provided.
+Pipeline behaviors add zero overhead when not registered.
 
-## Advanced Usage
+## When to Use
 
-### Source Generator (Recommended)
+**Good fit:**
+- CQRS architectures
+- Domain-driven design with domain events
+- Clean architecture / vertical slices
+- Applications requiring testability
 
-Automatically discover and register all handlers at compile time:
-
-```
-dotnet add package AsyncMediator.SourceGenerator
-```
-
-```csharp
-// Zero-config: handlers auto-discovered
-services.AddAsyncMediator();
-
-// With behaviors
-services.AddAsyncMediator(cfg => cfg
-    .AddOpenGenericBehavior(typeof(LoggingBehavior<,>))
-    .AddOpenGenericBehavior(typeof(ValidationBehavior<,>)));
-```
-
-### Manual Registration (No Source Generator)
-
-If you prefer explicit control or can't use source generators:
-
-```csharp
-// Register handlers manually
-services.AddTransient<ICommandHandler<CreateOrderCommand>, CreateOrderHandler>();
-services.AddTransient<IQuery<OrderSearchCriteria, List<Order>>, OrderQuery>();
-
-// Register behaviors
-services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-
-// Wire up mediator with behavior factory
-services.AddScoped<IMediator>(sp => new Mediator(
-    multiInstanceFactory: type => sp.GetServices(type),
-    singleInstanceFactory: type => sp.GetRequiredService(type),
-    behaviorFactory: type => sp.GetServices(type)));  // Resolves behaviors from DI
-```
-
-### Pipeline Behaviors
-
-Behaviors wrap handler execution for cross-cutting concerns. They execute in registration order, like middleware.
-
-**Logging Behavior:**
-
-```csharp
-public class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavior<TRequest, TResponse>> logger)
-    : IPipelineBehavior<TRequest, TResponse>
-{
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
-    {
-        logger.LogInformation("Handling {Request}", typeof(TRequest).Name);
-        var sw = Stopwatch.StartNew();
-        var response = await next();
-        logger.LogInformation("Handled {Request} in {Elapsed}ms", typeof(TRequest).Name, sw.ElapsedMilliseconds);
-        return response;
-    }
-}
-```
-
-**Validation with DataAnnotations:**
-
-```csharp
-public record CreateOrderCommand(
-    [property: Required] Guid CustomerId,
-    [property: Required, MinLength(1)] List<OrderItem> Items) : ICommand;
-
-public class ValidationBehavior<TRequest> : IPipelineBehavior<TRequest, ICommandWorkflowResult>
-    where TRequest : ICommand
-{
-    public Task<ICommandWorkflowResult> Handle(
-        TRequest request, RequestHandlerDelegate<ICommandWorkflowResult> next, CancellationToken ct)
-    {
-        var context = new System.ComponentModel.DataAnnotations.ValidationContext(request);
-        var results = new List<ValidationResult>();
-
-        if (!Validator.TryValidateObject(request, context, results, validateAllProperties: true))
-            return Task.FromResult<ICommandWorkflowResult>(new CommandWorkflowResult(results));
-
-        return next();
-    }
-}
-```
-
-**Unit of Work Behavior:**
-
-```csharp
-public class UnitOfWorkBehavior<TRequest>(IUnitOfWork uow)
-    : IPipelineBehavior<TRequest, ICommandWorkflowResult>
-    where TRequest : ICommand
-{
-    public async Task<ICommandWorkflowResult> Handle(
-        TRequest request, RequestHandlerDelegate<ICommandWorkflowResult> next, CancellationToken ct)
-    {
-        var result = await next();
-        if (result.Success)
-            await uow.CommitAsync(ct);
-        return result;
-    }
-}
-```
-
-### TransactionScope
-
-Opt-in for operations requiring ACID guarantees:
-
-```csharp
-public class TransferFundsHandler(IMediator mediator) : CommandHandler<TransferFundsCommand>(mediator)
-{
-    protected override bool UseTransactionScope => true;  // Wraps DoHandle in TransactionScope
-}
-```
-
-Events execute *after* the transaction commits successfully.
-
-### Returning Data from Commands
-
-Use `SetResult()` to return data from command handlers:
-
-```csharp
-protected override async Task<ICommandWorkflowResult> DoHandle(ValidationContext ctx, CancellationToken ct)
-{
-    var order = await repo.Create(Command.CustomerId, Command.Items, ct);
-
-    var result = CommandWorkflowResult.Ok();
-    result.SetResult(order);  // Attach the created entity
-    return result;
-}
-
-// Caller retrieves it:
-var result = await mediator.Send(command, ct);
-var order = result.Result<Order>();  // null if failed or wrong type
-```
-
-### Event Behavior Gotchas
-
-**Nested commands share the event queue:**
-```csharp
-Mediator.DeferEvent(new ParentEvent());
-await Mediator.Send(new ChildCommand(), ct);  // Child defers its own events
-return CommandWorkflowResult.Ok();
-// All events (parent + child) fire here, in order
-```
-
-**Event handler failures don't rollback commands** - the command has already succeeded. Use idempotent handlers or the outbox pattern for guaranteed delivery.
-
-**Don't call `ExecuteDeferredEvents()` manually** - `CommandHandler` does this automatically after `DoHandle` succeeds.
-
-### Excluding Handlers from Discovery
-
-```csharp
-[ExcludeFromMediator]
-public sealed class DraftHandler : CommandHandler<MyCommand> { ... }
-```
+**Not a fit:**
+- Simple CRUD (direct repository access is clearer)
+- Event sourcing (use specialized frameworks)
+- Real-time streaming (use message brokers)
 
 ## Documentation
 
-- [Architecture & Design Decisions](ARCHITECTURE.md)
-- [Migration Guide (v2 → v3)](MIGRATION_GUIDE.md)
-- [GitHub Issues](https://github.com/preemajames/AsyncMediator/issues)
+| Resource | Description |
+|----------|-------------|
+| [Working Demo](samples/TodoApi/START_HERE.md) | Run it locally and see the flow |
+| [Architecture](ARCHITECTURE.md) | Design decisions and internals |
+| [Pipeline Behaviors](PIPELINE.md) | Logging, validation, unit of work examples |
+| [Migration Guide](MIGRATION_GUIDE.md) | Upgrading from v2.x |
 
-## Breaking Changes (v3.0)
+## Advanced Topics
 
-- Requires .NET 9 or .NET 10
-- `CancellationToken` added to all async interfaces
-- `TransactionScope` now opt-in (override `UseTransactionScope => true`)
+<details>
+<summary><strong>Returning data from commands</strong></summary>
+
+```csharp
+var result = CommandWorkflowResult.Ok();
+result.SetResult(order);
+return result;
+
+// Caller
+var order = result.Result<Order>();
+```
+</details>
+
+<details>
+<summary><strong>TransactionScope (opt-in)</strong></summary>
+
+```csharp
+public class TransferHandler(IMediator mediator) : CommandHandler<TransferCommand>(mediator)
+{
+    protected override bool UseTransactionScope => true;
+}
+```
+</details>
+
+<details>
+<summary><strong>Excluding handlers from discovery</strong></summary>
+
+```csharp
+[ExcludeFromMediator]
+public class DraftHandler : CommandHandler<MyCommand> { ... }
+```
+</details>
+
+<details>
+<summary><strong>Manual registration (without source generator)</strong></summary>
+
+```csharp
+services.AddScoped<IMediator>(sp => new Mediator(
+    type => sp.GetServices(type),
+    type => sp.GetRequiredService(type)));
+
+services.AddTransient<ICommandHandler<CreateOrderCommand>, CreateOrderHandler>();
+```
+</details>
+
+## Contributing
+
+Found a bug or have a feature request? [Open an issue](https://github.com/preemajames/AsyncMediator/issues).
 
 ## License
 
